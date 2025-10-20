@@ -1,266 +1,187 @@
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Partner Shooter</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: black; color: white; }
+    #gameCanvas { display: block; background: #111; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-// --- Game variables ---
-let score = 0;
-let wave = 1;
-let enemies = [];
-let bullets = [];
-let enemyBullets = [];
-let waveInProgress = false;
+    let keys = {};
+    let bullets = [];
+    let enemies = [];
+    let score = 0;
+    let wave = 1;
+    let player = { x: canvas.width/2, y: canvas.height/2, size: 30, speed: 5, dirX: 0, dirY: -1, health: 100 };
 
-// --- Player ---
-let player = {
-  x: canvas.width / 2,
-  y: canvas.height / 2,
-  size: 25,
-  color: "lime",
-  speed: 5,
-  health: 100,
-  maxHealth: 100
-};
+    // AI Partner
+    let partner = { x: player.x + 60, y: player.y + 60, size: 20, health: 100 };
 
-// --- Player direction ---
-let keys = {};
-let playerDir = { dx: 1, dy: 0 };
+    document.addEventListener("keydown", e => keys[e.key] = true);
+    document.addEventListener("keyup", e => keys[e.key] = false);
 
-// --- Partner ---
-let partner = { x: player.x + 50, y: player.y + 50, size: 15, color: "cyan" };
-let lastPartnerShot = 0;
-const partnerFireRate = 500;
-
-// --- Enemy & MegaBot ---
-let megaBot = null;
-const enemyFireRate = 2000;
-
-// --- Event listeners ---
-window.addEventListener("keydown", e => {
-  keys[e.key.toLowerCase()] = true;
-  if (e.key === " " && (playerDir.dx !== 0 || playerDir.dy !== 0)) {
-    bullets.push({
-      x: player.x + player.size / 2,
-      y: player.y + player.size / 2,
-      dx: playerDir.dx * 10,
-      dy: playerDir.dy * 10,
-      owner: "player"
-    });
-  }
-});
-window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
-
-// --- Helper Functions ---
-function spawnEnemy(isMega = false) {
-  const size = isMega ? 60 : 20;
-  const health = isMega ? 50 + wave * 20 : 2 + wave;
-  const color = isMega ? "orange" : "red";
-  const e = {
-    x: Math.random() * (canvas.width - size),
-    y: Math.random() * (canvas.height - size),
-    size,
-    color,
-    health,
-    maxHealth: health,
-    isMega,
-    lastShot: Date.now()
-  };
-  if (isMega) megaBot = e;
-  else enemies.push(e);
-}
-
-function startWave() {
-  waveInProgress = true;
-  const waveEnemiesCount = 5 + wave * 2;
-  let spawned = 0;
-  const interval = setInterval(() => {
-    if (spawned < waveEnemiesCount) {
-      spawnEnemy();
-      spawned++;
-    } else clearInterval(interval);
-  }, 1000);
-}
-
-// --- Start first wave ---
-startWave();
-
-// --- Game Loop ---
-function update() {
-  // --- Player movement & direction ---
-  let dirX = 0, dirY = 0;
-  if (keys["w"]) dirY -= 1;
-  if (keys["s"]) dirY += 1;
-  if (keys["a"]) dirX -= 1;
-  if (keys["d"]) dirX += 1;
-  if (dirX !== 0 || dirY !== 0) {
-    const mag = Math.hypot(dirX, dirY);
-    playerDir = { dx: dirX / mag, dy: dirY / mag };
-    player.x += playerDir.dx * player.speed;
-    player.y += playerDir.dy * player.speed;
-  }
-  // Keep player on screen
-  player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
-  player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
-
-  // --- Partner follows player ---
-  partner.x += (player.x - partner.x) * 0.05;
-  partner.y += (player.y - partner.y) * 0.05;
-
-  const now = Date.now();
-
-  // --- Partner auto-shoot ---
-  if (enemies.length > 0 && now - lastPartnerShot > partnerFireRate) {
-    let nearest = enemies.length > 0 ? enemies[0] : null;
-    if (nearest) {
-      let minDist = Math.hypot(nearest.x - partner.x, nearest.y - partner.y);
-      enemies.forEach(e => {
-        const d = Math.hypot(e.x - partner.x, e.y - partner.y);
-        if (d < minDist) { minDist = d; nearest = e; }
+    function shoot() {
+      bullets.push({ 
+        x: player.x, 
+        y: player.y, 
+        dx: player.dirX * 10, 
+        dy: player.dirY * 10 
       });
-      const angle = Math.atan2(nearest.y - partner.y, nearest.x - partner.x);
-      bullets.push({
-        x: partner.x + partner.size / 2,
-        y: partner.y + partner.size / 2,
-        dx: Math.cos(angle) * 8,
-        dy: Math.sin(angle) * 8,
-        owner: "partner"
-      });
-      lastPartnerShot = now;
     }
-  }
 
-  // --- Enemy shooting ---
-  enemies.forEach(e => {
-    if (now - e.lastShot > enemyFireRate) {
-      const angle = Math.atan2(player.y - e.y, player.x - e.x);
-      enemyBullets.push({
-        x: e.x + e.size / 2,
-        y: e.y + e.size / 2,
-        dx: Math.cos(angle) * 5,
-        dy: Math.sin(angle) * 5,
-        owner: "enemy"
-      });
-      e.lastShot = now;
-    }
-  });
+    document.addEventListener("click", shoot);
 
-  // Mega Bot shooting
-  if (megaBot && now - megaBot.lastShot > enemyFireRate) {
-    const angle = Math.atan2(player.y - megaBot.y, player.x - megaBot.x);
-    enemyBullets.push({
-      x: megaBot.x + megaBot.size / 2,
-      y: megaBot.y + megaBot.size / 2,
-      dx: Math.cos(angle) * 6,
-      dy: Math.sin(angle) * 6,
-      owner: "enemy"
-    });
-    megaBot.lastShot = now;
-  }
-
-  // --- Update bullets ---
-  bullets.forEach((b, bi) => {
-    b.x += b.dx; b.y += b.dy;
-
-    const targets = b.owner === "player" ? enemies.concat(megaBot ? [megaBot] : []) : [];
-    targets.forEach((e, ei) => {
-      if (!e) return;
-      if (b.x < e.x + e.size && b.x + 6 > e.x && b.y < e.y + e.size && b.y + 2 > e.y) {
-        e.health -= 1;
-        bullets.splice(bi, 1);
-        if (e.health <= 0) {
-          score += e.isMega ? 50 : 10;
-          if (e.isMega) megaBot = null;
-          else enemies.splice(ei, 1);
-        }
+    function spawnEnemies(num) {
+      for (let i = 0; i < num; i++) {
+        enemies.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height / 2,
+          size: 25,
+          speed: 2 + Math.random(),
+          health: 20 + wave * 5,
+          color: "red",
+          shootTimer: 0
+        });
       }
-    });
-    if (b.x > canvas.width || b.x < 0 || b.y > canvas.height || b.y < 0) bullets.splice(bi,1);
-  });
-
-  // --- Enemy bullets ---
-  enemyBullets.forEach((b, bi) => {
-    b.x += b.dx; b.y += b.dy;
-    if (b.x < player.x + player.size && b.x + 6 > player.x &&
-        b.y < player.y + player.size && b.y + 2 > player.y) {
-      player.health -= 5;
-      enemyBullets.splice(bi,1);
     }
-    if (b.x > canvas.width || b.x < 0 || b.y > canvas.height || b.y < 0) enemyBullets.splice(bi,1);
-  });
 
-  // --- Wave check ---
-  if (!waveInProgress && enemies.length === 0 && !megaBot) {
-    wave++;
-    startWave();
-  }
+    function spawnBoss() {
+      enemies.push({
+        x: canvas.width / 2,
+        y: 80,
+        size: 80,
+        speed: 1.5,
+        health: 300 + wave * 100,
+        color: "purple",
+        shootTimer: 0,
+        boss: true
+      });
+    }
 
-  // --- Draw ---
-  ctx.fillStyle = "black";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+    spawnEnemies(5);
 
-  // Player
-  ctx.fillStyle = player.color;
-  ctx.fillRect(player.x, player.y, player.size, player.size);
+    function update() {
+      // Movement
+      if (keys["w"]) { player.y -= player.speed; player.dirX = 0; player.dirY = -1; }
+      if (keys["s"]) { player.y += player.speed; player.dirX = 0; player.dirY = 1; }
+      if (keys["a"]) { player.x -= player.speed; player.dirX = -1; player.dirY = 0; }
+      if (keys["d"]) { player.x += player.speed; player.dirX = 1; player.dirY = 0; }
 
-  // Health bar
-  ctx.fillStyle = "gray";
-  ctx.fillRect(20,20,200,20);
-  ctx.fillStyle = "lime";
-  ctx.fillRect(20,20,200*(player.health/player.maxHealth),20);
-  ctx.strokeStyle="white";
-  ctx.strokeRect(20,20,200,20);
+      // Partner follows player
+      let dx = player.x - partner.x;
+      let dy = player.y - partner.y;
+      partner.x += dx * 0.05;
+      partner.y += dy * 0.05;
 
-  // Partner
-  ctx.fillStyle = partner.color;
-  ctx.fillRect(partner.x, partner.y, partner.size, partner.size);
+      // Bullets move
+      bullets.forEach((b, i) => {
+        b.x += b.dx;
+        b.y += b.dy;
+        // Remove offscreen
+        if (b.x < 0 || b.y < 0 || b.x > canvas.width || b.y > canvas.height) bullets.splice(i, 1);
+      });
 
-  // Enemies
-  enemies.forEach(e=>{
-    ctx.fillStyle=e.color;
-    ctx.fillRect(e.x,e.y,e.size,e.size);
-    ctx.fillStyle="gray";
-    ctx.fillRect(e.x,e.y-5,e.size,3);
-    ctx.fillStyle="red";
-    ctx.fillRect(e.x,e.y-5,e.size*(e.health/e.maxHealth),3);
-  });
+      // Enemy behavior
+      enemies.forEach((e, ei) => {
+        let dx = player.x - e.x;
+        let dy = player.y - e.y;
+        let dist = Math.hypot(dx, dy);
+        e.x += (dx / dist) * e.speed;
+        e.y += (dy / dist) * e.speed;
 
-  // Mega Bot
-  if (megaBot){
-    ctx.fillStyle = megaBot.color;
-    ctx.fillRect(megaBot.x, megaBot.y, megaBot.size, megaBot.size);
-    ctx.fillStyle = "gray";
-    ctx.fillRect(megaBot.x, megaBot.y-10, megaBot.size,5);
-    ctx.fillStyle = "orange";
-    ctx.fillRect(megaBot.x, megaBot.y-10, megaBot.size*(megaBot.health/megaBot.maxHealth),5);
-  }
+        // Enemy shooting
+        e.shootTimer++;
+        if (e.shootTimer > 100) {
+          e.shootTimer = 0;
+          bullets.push({ x: e.x, y: e.y, dx: dx / dist * 5, dy: dy / dist * 5, enemy: true });
+        }
 
-  // Bullets
-  bullets.forEach(b=>{
-    ctx.fillStyle = b.owner==="player" ? "yellow":"cyan";
-    ctx.fillRect(b.x,b.y,6,2);
-  });
+        // Bullet collisions
+        bullets.forEach((b, bi) => {
+          if (!b.enemy && Math.hypot(b.x - e.x, b.y - e.y) < e.size / 2) {
+            e.health -= 20;
+            bullets.splice(bi, 1);
+            if (e.health <= 0) {
+              enemies.splice(ei, 1);
+              score += e.boss ? 100 : 10;
+            }
+          }
+        });
 
-  // Enemy bullets
-  enemyBullets.forEach(b=>{
-    ctx.fillStyle="red";
-    ctx.fillRect(b.x,b.y,6,2);
-  });
+        // Enemy hits player
+        if (Math.hypot(player.x - e.x, player.y - e.y) < player.size / 2 + e.size / 2) {
+          player.health -= 1;
+        }
+      });
 
-  // Score & wave
-  ctx.fillStyle="white";
-  ctx.font="20px Arial";
-  ctx.fillText(`Score: ${score}`,20,60);
-  ctx.fillText(`Wave: ${wave}`,20,90);
+      // Player hit by enemy bullets
+      bullets.forEach((b, i) => {
+        if (b.enemy && Math.hypot(b.x - player.x, b.y - player.y) < player.size / 2) {
+          player.health -= 5;
+          bullets.splice(i, 1);
+        }
+      });
 
-  // Game over
-  if (player.health <=0){
-    ctx.fillStyle="white";
-    ctx.font="50px Arial";
-    ctx.fillText("GAME OVER",canvas.width/2 -150,canvas.height/2);
-    return; // stop loop
-  }
+      // Next wave
+      if (enemies.length === 0) {
+        wave++;
+        if (wave % 3 === 0) spawnBoss();
+        else spawnEnemies(5 + wave);
+      }
+    }
 
-  requestAnimationFrame(update);
-}
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-update();
+      // Player
+      ctx.fillStyle = "lime";
+      ctx.fillRect(player.x - player.size/2, player.y - player.size/2, player.size, player.size);
+
+      // Partner
+      ctx.fillStyle = "cyan";
+      ctx.fillRect(partner.x - partner.size/2, partner.y - partner.size/2, partner.size, partner.size);
+
+      // Bullets
+      bullets.forEach(b => {
+        ctx.fillStyle = b.enemy ? "orange" : "white";
+        ctx.fillRect(b.x, b.y, 5, 5);
+      });
+
+      // Enemies
+      enemies.forEach(e => {
+        ctx.fillStyle = e.color;
+        ctx.fillRect(e.x - e.size/2, e.y - e.size/2, e.size, e.size);
+
+        // Enemy HP bar
+        ctx.fillStyle = "red";
+        ctx.fillRect(e.x - e.size/2, e.y - e.size, e.size * (e.health / (e.boss ? 300 + wave * 100 : 20 + wave * 5)), 5);
+      });
+
+      // HUD
+      ctx.fillStyle = "white";
+      ctx.font = "20px Arial";
+      ctx.fillText("Health: " + player.health, 20, 30);
+      ctx.fillText("Score: " + score, 20, 60);
+      ctx.fillText("Wave: " + wave, 20, 90);
+    }
+
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
