@@ -14,10 +14,7 @@ let explosions = [];
 let score = 0;
 let wave = 1;
 
-// Last movement direction for shooting
 let lastDir = { x: 1, y: 0 };
-
-// Space bar shooting control
 let canShoot = true;
 
 let player = {
@@ -49,7 +46,7 @@ function shoot() {
   });
 }
 
-// ======== Spawn Enemies ========
+// ======== Enemy Spawning ========
 function spawnEnemies(count) {
   for(let i=0;i<count;i++){
     enemies.push({
@@ -88,7 +85,7 @@ function spawnBoss() {
   });
 }
 
-// ======== Explosion Function ========
+// ======== Explosions ========
 function createExplosion(x, y, color="red") {
   for(let i=0;i<20;i++){
     explosions.push({
@@ -103,7 +100,7 @@ function createExplosion(x, y, color="red") {
   }
 }
 
-// ======== Game Functions ========
+// ======== Game Logic ========
 function movePlayer() {
   if(keys["w"]||keys["arrowup"]){ player.y-=player.speed; lastDir.y=-1; lastDir.x=0; }
   if(keys["s"]||keys["arrowdown"]){ player.y+=player.speed; lastDir.y=1; lastDir.x=0; }
@@ -120,17 +117,17 @@ function movePlayer() {
 function handleShooting() {
   if(keys[" "] && canShoot){
     shoot();
-    canShoot = false; // one shot per press
+    canShoot = false; 
   }
   if(!keys[" "]){
-    canShoot = true; // reset when released
+    canShoot = true; 
   }
 }
 
 function updateBullets(){
   bullets = bullets.filter(b => {
-    b.x+=b.dx;
-    b.y+=b.dy;
+    b.x += b.dx;
+    b.y += b.dy;
     return b.x>=0 && b.x<=canvas.width && b.y>=0 && b.y<=canvas.height;
   });
 }
@@ -144,7 +141,7 @@ function updateEnemies(){
       e.x += (dx/dist)*e.speed;
       e.y += (dy/dist)*e.speed;
 
-      // Triangle enemy shooting
+      // Triangle shooting
       if(e.type==="triangle"){
         e.shootTimer++;
         if(e.shootTimer>100){
@@ -164,7 +161,7 @@ function updateEnemies(){
       if(dist < (player.size/2 + e.size/2)){
         player.health -= (e.type==="triangle"?30:20);
         createExplosion(e.x,e.y,(e.type==="triangle"?"cyan":"red"));
-        return false; // Remove enemy
+        return false;
       }
     }
     return true;
@@ -183,7 +180,6 @@ function updateLightning(){
   });
 }
 
-// ===== Safe Bullet-Enemy Collision =====
 function checkBulletCollisions(){
   for(let bi = bullets.length - 1; bi >= 0; bi--){
     let b = bullets[bi];
@@ -191,13 +187,13 @@ function checkBulletCollisions(){
       let e = enemies[ei];
       if(Math.hypot(b.x - e.x, b.y - e.y) < e.size/2){
         e.health -= 10;
-        bullets.splice(bi, 1); // remove bullet
+        bullets.splice(bi, 1);
         if(e.health <= 0){
           createExplosion(e.x, e.y, (e.type==="triangle"?"cyan":e.type==="boss"?"yellow":"red"));
           enemies.splice(ei, 1);
           score += (e.type==="boss"?100:10);
         }
-        break; // stop checking this bullet
+        break;
       }
     }
   }
@@ -209,10 +205,10 @@ function updateExplosions(){
     ctx.beginPath();
     ctx.arc(ex.x,ex.y,ex.radius,0,Math.PI*2);
     ctx.fill();
-    ex.x+=ex.dx;
-    ex.y+=ex.dy;
+    ex.x += ex.dx;
+    ex.y += ex.dy;
     ex.life--;
-    return ex.life>0;
+    return ex.life > 0;
   });
 }
 
@@ -268,7 +264,7 @@ function drawUI(){
 function nextWave(){
   if(enemies.length===0){
     wave++;
-    if(wave%3===0) spawnBoss();
+    if(wave % 3 === 0) spawnBoss();
     else{
       spawnEnemies(3+wave);
       spawnTriangleEnemies(Math.floor(wave/2));
