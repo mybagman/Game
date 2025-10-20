@@ -1,5 +1,7 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
+
+// Set canvas size to match viewport
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
@@ -12,28 +14,36 @@ let explosions = [];
 let score = 0;
 let wave = 1;
 
+// Last movement direction for shooting
+let lastDir = { x: 1, y: 0 };
+
 let player = {
   x: canvas.width/2,
   y: canvas.height/2,
   size: 30,
   speed: 5,
-  health: 100,
-  angle: 0
+  health: 100
 };
 
 // ======== Controls ========
 document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
-canvas.addEventListener("click", shoot);
 
 // ======== Shoot Function ========
 function shoot() {
+  // Use last movement direction; normalize
+  let dx = lastDir.x;
+  let dy = lastDir.y;
+  const mag = Math.hypot(dx, dy) || 1; // avoid divide by zero
+  dx /= mag;
+  dy /= mag;
+
   bullets.push({
     x: player.x,
     y: player.y,
     size: 6,
-    dx: Math.cos(player.angle) * 10,
-    dy: Math.sin(player.angle) * 10
+    dx: dx * 10,
+    dy: dy * 10
   });
 }
 
@@ -93,30 +103,42 @@ function createExplosion(x, y, color="red") {
 
 // ======== Game Functions ========
 function movePlayer() {
-  if(keys["w"]||keys["arrowup"]){ player.y-=player.speed; }
-  if(keys["s"]||keys["arrowdown"]){ player.y+=player.speed; }
-  if(keys["a"]||keys["arrowleft"]){ player.x-=player.speed; }
-  if(keys["d"]||keys["arrowright"]){ player.x+=player.speed; }
+  let moved = false;
+  if(keys["w"]||keys["arrowup"]){ player.y-=player.speed; lastDir.y=-1; lastDir.x=0; moved=true; }
+  if(keys["s"]||keys["arrowdown"]){ player.y+=player.speed; lastDir.y=1; lastDir.x=0; moved=true; }
+  if(keys["a"]||keys["arrowleft"]){ player.x-=player.speed; lastDir.x=-1; lastDir.y=0; moved=true; }
+  if(keys["d"]||keys["arrowright"]){ player.x+=player.speed; lastDir.x=1; lastDir.y=0; moved=true; }
+  // If diagonal movement, normalize
+  if(keys["w"]||keys["arrowup"]){
+    if(keys["a"]||keys["arrowleft"]){ lastDir.x=-0.707; lastDir.y=-0.707; }
+    if(keys["d"]||keys["arrowright"]){ lastDir.x=0.707; lastDir.y=-0.707; }
+  }
+  if(keys["s"]||keys["arrowdown"]){
+    if(keys["a"]||keys["arrowleft"]){ lastDir.x=-0.707; lastDir.y=0.707; }
+    if(keys["d"]||keys["arrowright"]){ lastDir.x=0.707; lastDir.y=0.707; }
+  }
+}
 
-  canvas.onmousemove = function(e){
-    player.angle = Math.atan2(e.clientY-player.y, e.clientX-player.x);
-  };
+function handleShooting() {
+  if(keys[" "]){ // space bar
+    shoot();
+  }
 }
 
 function updateBullets(){
-  bullets.forEach((b,i)=>{
+  bullets = bullets.filter(b => {
     b.x+=b.dx;
     b.y+=b.dy;
-    if(b.x<0||b.x>canvas.width||b.y<0||b.y>canvas.height) bullets.splice(i,1);
+    return b.x>=0 && b.x<=canvas.width && b.y>=0 && b.y<=canvas.height;
   });
 }
 
 function updateEnemies(){
-  enemies.forEach((e,ei)=>{
+  enemies = enemies.filter(e => {
     if(e.type!=="boss"){
-      let dx = player.x - e.x;
-      let dy = player.y - e.y;
-      let dist = Math.hypot(dx,dy);
+      const dx = player.x - e.x;
+      const dy = player.y - e.y;
+      const dist = Math.hypot(dx,dy);
       e.x += (dx/dist)*e.speed;
       e.y += (dy/dist)*e.speed;
 
@@ -136,46 +158,49 @@ function updateEnemies(){
         }
       }
 
-      // Contact with player
+      // Collision with player
       if(dist < (player.size/2 + e.size/2)){
         player.health -= (e.type==="triangle"?30:20);
         createExplosion(e.x,e.y,(e.type==="triangle"?"cyan":"red"));
-        enemies.splice(ei,1);
+        return false; // Remove enemy
       }
     }
+    return true;
   });
 }
 
 function updateLightning(){
-  lightning.forEach((l,i)=>{
-    l.x+=l.dx;
-    l.y+=l.dy;
+  lightning = lightning.filter(l => {
+    l.x += l.dx;
+    l.y += l.dy;
     if(Math.hypot(l.x-player.x,l.y-player.y)<player.size/2){
       player.health-=l.damage;
-      lightning.splice(i,1);
+      return false;
     }
-    if(l.x<0||l.x>canvas.width||l.y<0||l.y>canvas.height) lightning.splice(i,1);
+    return l.x>=0 && l.x<=canvas.width && l.y>=0 && l.y<=canvas.height;
   });
 }
 
 function checkBulletCollisions(){
-  enemies.forEach((e,ei)=>{
-    bullets.forEach((b,bi)=>{
+  bullets.forEach((b,bi)=>{
+    enemies.forEach((e,ei)=>{
       if(Math.hypot(b.x-e.x,b.y-e.y)<e.size/2){
-        e.health-=10;
-        bullets.splice(bi,1);
+        e.health -=10;
+        bullets[bi] = null;
         if(e.health<=0){
           createExplosion(e.x,e.y,(e.type==="triangle"?"cyan":e.type==="boss"?"yellow":"red"));
-          enemies.splice(ei,1);
+          enemies[ei]=null;
           score += (e.type==="boss"?100:10);
         }
       }
     });
   });
+  bullets = bullets.filter(b => b!==null);
+  enemies = enemies.filter(e => e!==null);
 }
 
 function updateExplosions(){
-  explosions.forEach((ex,i)=>{
+  explosions = explosions.filter(ex => {
     ctx.fillStyle = ex.color;
     ctx.beginPath();
     ctx.arc(ex.x,ex.y,ex.radius,0,Math.PI*2);
@@ -183,7 +208,7 @@ function updateExplosions(){
     ex.x+=ex.dx;
     ex.y+=ex.dy;
     ex.life--;
-    if(ex.life<=0) explosions.splice(i,1);
+    return ex.life>0;
   });
 }
 
@@ -247,9 +272,11 @@ function nextWave(){
   }
 }
 
+// ======== Main Game Loop ========
 function gameLoop(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   movePlayer();
+  handleShooting(); // Space bar shooting
   updateBullets();
   updateEnemies();
   updateLightning();
