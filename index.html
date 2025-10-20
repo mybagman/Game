@@ -1,21 +1,36 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Test Canvas</title>
-<style>
-  body { margin: 0; overflow: hidden; background: black; }
-  #gameCanvas { display: block; width: 100vw; height: 100vh; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Top Down Shooter</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
 </head>
 <body>
-<canvas id="gameCanvas"></canvas>
-<script>
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-ctx.fillStyle = "green";
-ctx.fillRect(50, 50, 100, 100);
-</script>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // Make canvas full screen
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Simple test draw
+    ctx.fillStyle = "green";
+    ctx.fillRect(50, 50, 100, 100);
+  </script>
 </body>
 </html>
