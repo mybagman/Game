@@ -85,6 +85,54 @@ function spawnBoss() {
   });
 }
 
+// ======== Boss Update Function ========
+function updateBoss(boss) {
+  // Move boss slowly in a sine/cos pattern
+  boss.angle = boss.angle || 0; // initialize
+  boss.angle += 0.01; // speed of circular motion
+  boss.x = canvas.width/2 + Math.cos(boss.angle) * 150;
+  boss.y = 80 + Math.sin(boss.angle) * 50;
+
+  // Spawn minions randomly every 200 frames
+  boss.spawnTimer = boss.spawnTimer || 0;
+  boss.spawnTimer++;
+  if(boss.spawnTimer > 200){
+    boss.spawnTimer = 0;
+    enemies.push({
+      x: boss.x + (Math.random()-0.5)*100,
+      y: boss.y + (Math.random()-0.5)*100,
+      size: 30,
+      speed: 2,
+      health: 30,
+      type: "normal",
+      shootTimer: 0
+    });
+  }
+
+  // Shoot in 4 directions every 150 frames
+  boss.shootTimer = boss.shootTimer || 0;
+  boss.shootTimer++;
+  if(boss.shootTimer > 150){
+    boss.shootTimer = 0;
+    let dirs = [
+      {x:0, y:-1}, // up
+      {x:0, y:1},  // down
+      {x:-1, y:0}, // left
+      {x:1, y:0}   // right
+    ];
+    dirs.forEach(d => {
+      lightning.push({
+        x: boss.x,
+        y: boss.y,
+        dx: d.x*5,
+        dy: d.y*5,
+        size:6,
+        damage:20
+      });
+    });
+  }
+}
+
 // ======== Explosions ========
 function createExplosion(x, y, color="red") {
   for(let i=0;i<20;i++){
@@ -272,6 +320,49 @@ function nextWave(){
   }
 }
 
+function updateEnemies(){
+  enemies = enemies.filter(e => {
+    if(e.type === "boss"){
+      updateBoss(e);
+      // Collision with player
+      const dist = Math.hypot(player.x - e.x, player.y - e.y);
+      if(dist < (player.size/2 + e.size/2)){
+        player.health -= 40;
+        createExplosion(e.x, e.y, "yellow");
+      }
+      return true;
+    } else {
+      // existing normal & triangle logic...
+      const dx = player.x - e.x;
+      const dy = player.y - e.y;
+      const dist = Math.hypot(dx, dy);
+      e.x += (dx/dist)*e.speed;
+      e.y += (dy/dist)*e.speed;
+
+      if(e.type==="triangle"){
+        e.shootTimer++;
+        if(e.shootTimer>100){
+          e.shootTimer=0;
+          lightning.push({
+            x:e.x,
+            y:e.y,
+            dx:(dx/dist)*5,
+            dy:(dy/dist)*5,
+            size:6,
+            damage:20
+          });
+        }
+      }
+
+      if(dist < (player.size/2 + e.size/2)){
+        player.health -= (e.type==="triangle"?30:20);
+        createExplosion(e.x,e.y,(e.type==="triangle"?"cyan":"red"));
+        return false;
+      }
+      return true;
+    }
+  });
+}
 // ======== Main Game Loop ========
 function gameLoop(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
