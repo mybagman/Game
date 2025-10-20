@@ -13,6 +13,7 @@ let lightning = [];
 let explosions = [];
 let score = 0;
 let wave = 1;
+let canShoot = true; // only shoot if true
 
 // Last movement direction for shooting
 let lastDir = { x: 1, y: 0 };
@@ -30,13 +31,15 @@ document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
 // ======== Shoot Function ========
-function shoot() {
-  // Use last movement direction; normalize
-  let dx = lastDir.x;
-  let dy = lastDir.y;
-  const mag = Math.hypot(dx, dy) || 1; // avoid divide by zero
-  dx /= mag;
-  dy /= mag;
+function handleShooting() {
+  if(keys[" "] && canShoot){ // space bar
+    shoot();
+    canShoot = false; // prevent more shots until key is released
+  }
+  if(!keys[" "]){ // reset when space bar is released
+    canShoot = true;
+  }
+}
 
   bullets.push({
     x: player.x,
