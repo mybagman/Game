@@ -28,15 +28,43 @@ window.addEventListener("keyup", e => {
   keys[e.key.toLowerCase()] = false;
 });
 
-// Spawn enemies every 2 seconds
+// --- Enemy spawn ---
 setInterval(() => {
   enemies.push({
     x: Math.random() * canvas.width,
     y: Math.random() * canvas.height,
     size: 20,
-    color: "red"
+    color: "red",
+    health: 2 // takes 2 hits to die
   });
 }, 2000);
+
+// --- Inside update() after bullets move ---
+bullets.forEach((b, bi) => {
+  b.x += b.dx;
+  b.y += b.dy;
+  ctx.fillStyle = "yellow";
+  ctx.fillRect(b.x, b.y, 6, 2);
+
+  // Check collision with enemies
+  enemies.forEach((e, ei) => {
+    if (b.x < e.x + e.size &&
+        b.x + 6 > e.x &&
+        b.y < e.y + e.size &&
+        b.y + 2 > e.y) {
+      e.health -= 1;           // reduce enemy health
+      bullets.splice(bi, 1);   // destroy bullet
+      if (e.health <= 0) {
+        enemies.splice(ei, 1); // destroy enemy
+      }
+    }
+  });
+
+  // Remove bullets leaving screen
+  if (b.x > canvas.width || b.x < 0 || b.y > canvas.height || b.y > canvas.height) {
+    bullets.splice(bi, 1);
+  }
+});
 
 // Game loop
 function update() {
@@ -80,6 +108,44 @@ function update() {
     ctx.fillStyle = e.color;
     ctx.fillRect(e.x, e.y, e.size, e.size);
   });
+
+  let lastPartnerShot = 0;
+const partnerFireRate = 500; // ms
+
+function update() {
+  // --- Movement code here remains the same ---
+
+  // --- Partner shooting ---
+  const now = Date.now();
+  if (enemies.length > 0 && now - lastPartnerShot > partnerFireRate) {
+    // Find nearest enemy
+    let nearest = enemies[0];
+    let minDist = Math.hypot(nearest.x - partner.x, nearest.y - partner.y);
+    enemies.forEach(e => {
+      const d = Math.hypot(e.x - partner.x, e.y - partner.y);
+      if (d < minDist) {
+        minDist = d;
+        nearest = e;
+      }
+    });
+
+    // Shoot bullet toward nearest enemy
+    const angle = Math.atan2(nearest.y - partner.y, nearest.x - partner.x);
+    bullets.push({
+      x: partner.x + partner.size / 2,
+      y: partner.y + partner.size / 2,
+      dx: Math.cos(angle) * 8,
+      dy: Math.sin(angle) * 8
+    });
+
+    lastPartnerShot = now;
+  }
+
+  // --- Clear screen, draw player, partner, bullets, enemies ---
+  // (same as before)
+
+  requestAnimationFrame(update);
+}
 
   requestAnimationFrame(update);
 }
