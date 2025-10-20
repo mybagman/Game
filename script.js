@@ -13,6 +13,7 @@ let lightning = [];
 let explosions = [];
 let score = 0;
 let wave = 1;
+let minionsToAdd = [];
 
 let lastDir = { x: 1, y: 0 };
 let canShoot = true;
@@ -85,20 +86,20 @@ function spawnBoss() {
   });
 }
 
-// ======== Boss Update Function ========
 function updateBoss(boss) {
-  // Move boss slowly in a sine/cos pattern
-  boss.angle = boss.angle || 0; // initialize
-  boss.angle += 0.01; // speed of circular motion
+  // Boss slow circular movement
+  boss.angle = boss.angle || 0;
+  boss.angle += 0.01;
   boss.x = canvas.width/2 + Math.cos(boss.angle) * 150;
   boss.y = 80 + Math.sin(boss.angle) * 50;
 
-  // Spawn minions randomly every 200 frames
+  // Spawn minions every 200 frames
   boss.spawnTimer = boss.spawnTimer || 0;
   boss.spawnTimer++;
   if(boss.spawnTimer > 200){
     boss.spawnTimer = 0;
-    enemies.push({
+    // Instead of pushing inside the filter loop, push to a temporary array
+    let newMinion = {
       x: boss.x + (Math.random()-0.5)*100,
       y: boss.y + (Math.random()-0.5)*100,
       size: 30,
@@ -106,19 +107,20 @@ function updateBoss(boss) {
       health: 30,
       type: "normal",
       shootTimer: 0
-    });
+    };
+    minionsToAdd.push(newMinion); // temp array to add after updateEnemies
   }
 
-  // Shoot in 4 directions every 150 frames
+  // Shoot in 4 directions
   boss.shootTimer = boss.shootTimer || 0;
   boss.shootTimer++;
   if(boss.shootTimer > 150){
     boss.shootTimer = 0;
     let dirs = [
-      {x:0, y:-1}, // up
-      {x:0, y:1},  // down
-      {x:-1, y:0}, // left
-      {x:1, y:0}   // right
+      {x:0, y:-1},
+      {x:0, y:1},
+      {x:-1, y:0},
+      {x:1, y:0}
     ];
     dirs.forEach(d => {
       lightning.push({
@@ -131,7 +133,7 @@ function updateBoss(boss) {
       });
     });
   }
-}
+} }
 
 // ======== Explosions ========
 function createExplosion(x, y, color="red") {
@@ -189,6 +191,11 @@ function updateEnemies(){
       e.x += (dx/dist)*e.speed;
       e.y += (dy/dist)*e.speed;
 
+      // At the end of updateEnemies()
+if(minionsToAdd.length > 0){
+  enemies.push(...minionsToAdd);
+  minionsToAdd = [];
+}
       // Triangle shooting
       if(e.type==="triangle"){
         e.shootTimer++;
