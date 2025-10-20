@@ -185,21 +185,22 @@ function updateLightning(){
 }
 
 function checkBulletCollisions(){
-  bullets.forEach((b,bi)=>{
-    enemies.forEach((e,ei)=>{
-      if(Math.hypot(b.x-e.x,b.y-e.y)<e.size/2){
-        e.health -=10;
-        bullets[bi] = null;
-        if(e.health<=0){
-          createExplosion(e.x,e.y,(e.type==="triangle"?"cyan":e.type==="boss"?"yellow":"red"));
-          enemies[ei]=null;
-          score += (e.type==="boss"?100:10);
+  for(let bi = bullets.length - 1; bi >= 0; bi--){
+    let b = bullets[bi];
+    for(let ei = enemies.length - 1; ei >= 0; ei--){
+      let e = enemies[ei];
+      if(Math.hypot(b.x - e.x, b.y - e.y) < e.size/2){
+        e.health -= 10; // damage
+        bullets.splice(bi, 1); // remove bullet
+        if(e.health <= 0){
+          createExplosion(e.x, e.y, (e.type==="triangle" ? "cyan" : e.type==="boss" ? "yellow" : "red"));
+          enemies.splice(ei, 1); // remove enemy
+          score += (e.type==="boss" ? 100 : 10);
         }
+        break; // stop checking this bullet, it's gone
       }
-    });
-  });
-  bullets = bullets.filter(b => b!==null);
-  enemies = enemies.filter(e => e!==null);
+    }
+  }
 }
 
 function updateExplosions(){
