@@ -3,6 +3,7 @@ const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
+let explosions = [];
 let keys = {};
 let bullets = [];
 let enemies = [];
@@ -33,6 +34,20 @@ function shoot() {
 document.addEventListener("keydown", e => {
   if (e.code === "Space") shoot();
 });
+
+function createExplosion(x, y, color = "red") {
+  for (let i = 0; i < 20; i++) {
+    explosions.push({
+      x: x,
+      y: y,
+      dx: (Math.random() - 0.5) * 6, // random velocity
+      dy: (Math.random() - 0.5) * 6,
+      radius: Math.random() * 4 + 2,
+      color: color,
+      life: 30  // frames before disappearing
+    });
+  }
+}
 
 function spawnEnemies(count) {
   for (let i = 0; i < count; i++) {
@@ -111,6 +126,18 @@ function checkCollisions() {
     });
   });
 }
+
+// Explosion effect
+function createExplosion(x, y, color = "red") {
+  for (let i = 0; i < 20; i++) {
+    explosions.push({
+      x: x,
+      y: y,
+      dx: (Math.random() - 0.5) * 6,
+      dy: (Math.random() - 0.5) * 6,
+      radius: Math.random() * 4 + 2,
+      color: color,
+      life: 30
 
 function drawUI() {
   ctx.fillStyle = "white";
