@@ -1,7 +1,7 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// Set canvas size to match viewport
+// ======== Setup ========
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
@@ -19,8 +19,8 @@ let lastDir = { x: 1, y: 0 };
 let canShoot = true;
 
 let player = {
-  x: canvas.width/2,
-  y: canvas.height/2,
+  x: canvas.width / 2,
+  y: canvas.height / 2,
   size: 30,
   speed: 5,
   health: 100
@@ -30,14 +30,13 @@ let player = {
 document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
-// ======== Shoot Function ========
+// ======== Shoot ========
 function shoot() {
   let dx = lastDir.x;
   let dy = lastDir.y;
   const mag = Math.hypot(dx, dy) || 1;
   dx /= mag;
   dy /= mag;
-
   bullets.push({
     x: player.x,
     y: player.y,
@@ -49,10 +48,10 @@ function shoot() {
 
 // ======== Enemy Spawning ========
 function spawnEnemies(count) {
-  for(let i=0;i<count;i++){
+  for (let i = 0; i < count; i++) {
     enemies.push({
-      x: Math.random()*canvas.width,
-      y: Math.random()*canvas.height/2,
+      x: Math.random() * canvas.width,
+      y: Math.random() * (canvas.height / 2),
       size: 30,
       speed: 2,
       health: 30,
@@ -62,21 +61,11 @@ function spawnEnemies(count) {
   }
 }
 
-function spawnMiniBoss() {
-  enemies.push({
-    x: canvas.width/2,
-    y: 80,
-    size: 40,              // half the size of normal boss
-    health: 150 + wave*50, // scaled down health
-    type: "mini-boss"
-  });
-}
-
 function spawnTriangleEnemies(count) {
-  for(let i=0;i<count;i++){
+  for (let i = 0; i < count; i++) {
     enemies.push({
-      x: Math.random()*canvas.width,
-      y: Math.random()*canvas.height/2,
+      x: Math.random() * canvas.width,
+      y: Math.random() * (canvas.height / 2),
       size: 30,
       speed: 1.5,
       health: 40,
@@ -88,82 +77,38 @@ function spawnTriangleEnemies(count) {
 
 function spawnBoss() {
   enemies.push({
-    x: canvas.width/2,
-    y: 80,
+    x: canvas.width / 2,
+    y: 100,
     size: 80,
-    health: 300 + wave*100,
+    health: 300 + wave * 100,
     type: "boss"
   });
 }
 
-function updateMiniBoss(boss) {
-  boss.angle = boss.angle || 0;
-  boss.angle += 0.02; // maybe move slightly faster than full boss
-  boss.x = canvas.width/2 + Math.cos(boss.angle) * 100; // smaller orbit
-  boss.y = 80 + Math.sin(boss.angle) * 30;
-
-  // spawn minions less often
-  boss.spawnTimer = boss.spawnTimer || 0;
-  boss.spawnTimer++;
-  if(boss.spawnTimer > 300){
-    boss.spawnTimer = 0;
-    minionsToAdd.push({
-      x: boss.x + (Math.random()-0.5)*80,
-      y: boss.y + (Math.random()-0.5)*80,
-      size: 30,
-      speed: 2,
-      health: 30,
-      type: "normal",
-      shootTimer: 0
-    });
-  }
-
-  // shoot in 4 directions with less damage
-  boss.shootTimer = boss.shootTimer || 0;
-  boss.shootTimer++;
-  if(boss.shootTimer > 180){ // slower shooting than full boss
-    boss.shootTimer = 0;
-    let dirs = [
-      {x:0, y:-1},
-      {x:0, y:1},
-      {x:-1, y:0},
-      {x:1, y:0}
-    ];
-    dirs.forEach(d => {
-      lightning.push({
-        x: boss.x,
-        y: boss.y,
-        dx: d.x*5,
-        dy: d.y*5,
-        size:6,
-        damage:10
-      });
-    });
-  }
-
-  // collision with player
-  const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
-  if(dist < (player.size/2 + boss.size/2)){
-    player.health -= 20; // less damage than full boss
-    createExplosion(boss.x, boss.y, "orange");
-  }
+function spawnMiniBoss() {
+  enemies.push({
+    x: canvas.width / 2,
+    y: 120,
+    size: 40,
+    health: 150 + wave * 50,
+    type: "mini-boss"
+  });
 }
 
 // ======== Boss Logic ========
 function updateBoss(boss) {
   boss.angle = boss.angle || 0;
   boss.angle += 0.01;
-  boss.x = canvas.width/2 + Math.cos(boss.angle) * 150;
+  boss.x = canvas.width / 2 + Math.cos(boss.angle) * 150;
   boss.y = 80 + Math.sin(boss.angle) * 50;
 
-  // Spawn minions every 200 frames
   boss.spawnTimer = boss.spawnTimer || 0;
   boss.spawnTimer++;
-  if(boss.spawnTimer > 200){
+  if (boss.spawnTimer > 200) {
     boss.spawnTimer = 0;
     minionsToAdd.push({
-      x: boss.x + (Math.random()-0.5)*100,
-      y: boss.y + (Math.random()-0.5)*100,
+      x: boss.x + (Math.random() - 0.5) * 100,
+      y: boss.y + (Math.random() - 0.5) * 100,
       size: 30,
       speed: 2,
       health: 30,
@@ -172,162 +117,183 @@ function updateBoss(boss) {
     });
   }
 
-  // Shoot in 4 directions
   boss.shootTimer = boss.shootTimer || 0;
   boss.shootTimer++;
-  if(boss.shootTimer > 150){
+  if (boss.shootTimer > 150) {
     boss.shootTimer = 0;
     let dirs = [
-      {x:0, y:-1},
-      {x:0, y:1},
-      {x:-1, y:0},
-      {x:1, y:0}
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 1, y: 0 }
     ];
     dirs.forEach(d => {
       lightning.push({
         x: boss.x,
         y: boss.y,
-        dx: d.x*5,
-        dy: d.y*5,
-        size:6,
-        damage:20
+        dx: d.x * 5,
+        dy: d.y * 5,
+        size: 6,
+        damage: 20
+      });
+    });
+  }
+}
+
+function updateMiniBoss(boss) {
+  boss.angle = boss.angle || 0;
+  boss.angle += 0.02;
+  boss.x = canvas.width / 2 + Math.cos(boss.angle) * 100;
+  boss.y = 80 + Math.sin(boss.angle) * 30;
+
+  boss.spawnTimer = boss.spawnTimer || 0;
+  boss.spawnTimer++;
+  if (boss.spawnTimer > 300) {
+    boss.spawnTimer = 0;
+    minionsToAdd.push({
+      x: boss.x + (Math.random() - 0.5) * 80,
+      y: boss.y + (Math.random() - 0.5) * 80,
+      size: 25,
+      speed: 2,
+      health: 30,
+      type: "normal",
+      shootTimer: 0
+    });
+  }
+
+  boss.shootTimer = boss.shootTimer || 0;
+  boss.shootTimer++;
+  if (boss.shootTimer > 180) {
+    boss.shootTimer = 0;
+    let dirs = [
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 1, y: 0 }
+    ];
+    dirs.forEach(d => {
+      lightning.push({
+        x: boss.x,
+        y: boss.y,
+        dx: d.x * 5,
+        dy: d.y * 5,
+        size: 6,
+        damage: 10
       });
     });
   }
 }
 
 // ======== Explosions ========
-function createExplosion(x, y, color="red") {
-  for(let i=0;i<20;i++){
+function createExplosion(x, y, color = "red") {
+  for (let i = 0; i < 20; i++) {
     explosions.push({
       x: x,
       y: y,
-      dx: (Math.random()-0.5)*6,
-      dy: (Math.random()-0.5)*6,
-      radius: Math.random()*4+2,
+      dx: (Math.random() - 0.5) * 6,
+      dy: (Math.random() - 0.5) * 6,
+      radius: Math.random() * 4 + 2,
       color: color,
       life: 30
     });
   }
 }
 
-// ======== Game Logic ========
+// ======== Movement ========
 function movePlayer() {
-  if(keys["w"]||keys["arrowup"]){ player.y-=player.speed; lastDir.y=-1; lastDir.x=0; }
-  if(keys["s"]||keys["arrowdown"]){ player.y+=player.speed; lastDir.y=1; lastDir.x=0; }
-  if(keys["a"]||keys["arrowleft"]){ player.x-=player.speed; lastDir.x=-1; lastDir.y=0; }
-  if(keys["d"]||keys["arrowright"]){ player.x+=player.speed; lastDir.x=1; lastDir.y=0; }
-
-  // Diagonal movement
-  if(keys["w"]&&keys["a"]){ lastDir.x=-0.707; lastDir.y=-0.707; }
-  if(keys["w"]&&keys["d"]){ lastDir.x=0.707; lastDir.y=-0.707; }
-  if(keys["s"]&&keys["a"]){ lastDir.x=-0.707; lastDir.y=0.707; }
-  if(keys["s"]&&keys["d"]){ lastDir.x=0.707; lastDir.y=0.707; }
+  if (keys["w"] || keys["arrowup"]) { player.y -= player.speed; lastDir = { x: 0, y: -1 }; }
+  if (keys["s"] || keys["arrowdown"]) { player.y += player.speed; lastDir = { x: 0, y: 1 }; }
+  if (keys["a"] || keys["arrowleft"]) { player.x -= player.speed; lastDir = { x: -1, y: 0 }; }
+  if (keys["d"] || keys["arrowright"]) { player.x += player.speed; lastDir = { x: 1, y: 0 }; }
 }
 
 function handleShooting() {
-  if(keys[" "] && canShoot){
+  if (keys[" "] && canShoot) {
     shoot();
-    canShoot = false; 
+    canShoot = false;
   }
-  if(!keys[" "]){
-    canShoot = true; 
-  }
+  if (!keys[" "]) canShoot = true;
 }
 
-function updateBullets(){
+function updateBullets() {
   bullets = bullets.filter(b => {
     b.x += b.dx;
     b.y += b.dy;
-    return b.x>=0 && b.x<=canvas.width && b.y>=0 && b.y<=canvas.height;
+    return b.x >= 0 && b.x <= canvas.width && b.y >= 0 && b.y <= canvas.height;
   });
 }
 
+// ======== Enemy Logic ========
 function updateEnemies() {
   enemies = enemies.filter(e => {
     if (e.type === "boss") {
-  updateBoss(e);
-  const dist = Math.hypot(player.x - e.x, player.y - e.y);
-  if (dist < (player.size/2 + e.size/2)) {
-    player.health -= 40;
-    createExplosion(e.x, e.y, "yellow");
-  }
-  return true;
-
-} else if (e.type === "mini-boss") {
-  updateMiniBoss(e);
-  const dist = Math.hypot(player.x - e.x, player.y - e.y);
-  if (dist < (player.size/2 + e.size/2)) {
-    player.health -= 20;
-    createExplosion(e.x, e.y, "orange");
-  }
-  return true;
-  
-} else {
+      updateBoss(e);
+    } else if (e.type === "mini-boss") {
+      updateMiniBoss(e);
     } else {
       const dx = player.x - e.x;
       const dy = player.y - e.y;
       const dist = Math.hypot(dx, dy);
-      e.x += (dx/dist)*e.speed;
-      e.y += (dy/dist)*e.speed;
+      e.x += (dx / dist) * e.speed;
+      e.y += (dy / dist) * e.speed;
 
-      // Triangle shooting
-      if(e.type==="triangle"){
+      if (e.type === "triangle") {
         e.shootTimer++;
-        if(e.shootTimer>100){
-          e.shootTimer=0;
+        if (e.shootTimer > 100) {
+          e.shootTimer = 0;
           lightning.push({
-            x:e.x,
-            y:e.y,
-            dx:(dx/dist)*5,
-            dy:(dy/dist)*5,
-            size:6,
-            damage:20
+            x: e.x,
+            y: e.y,
+            dx: (dx / dist) * 5,
+            dy: (dy / dist) * 5,
+            size: 6,
+            damage: 15
           });
         }
       }
-
-      // Collision with player
-      if(dist < (player.size/2 + e.size/2)){
-        player.health -= (e.type==="triangle"?30:20);
-        createExplosion(e.x,e.y,(e.type==="triangle"?"cyan":"red"));
+      if (dist < (player.size / 2 + e.size / 2)) {
+        player.health -= (e.type === "triangle" ? 25 : 15);
+        createExplosion(e.x, e.y, e.type === "triangle" ? "cyan" : "red");
         return false;
       }
-
-      return true;
     }
+    return true;
   });
 
-  if(minionsToAdd.length > 0){
+  if (minionsToAdd.length > 0) {
     enemies.push(...minionsToAdd);
     minionsToAdd = [];
   }
 }
 
-function updateLightning(){
+function updateLightning() {
   lightning = lightning.filter(l => {
     l.x += l.dx;
     l.y += l.dy;
-    if(Math.hypot(l.x-player.x,l.y-player.y)<player.size/2){
-      player.health-=l.damage;
+    if (Math.hypot(l.x - player.x, l.y - player.y) < player.size / 2) {
+      player.health -= l.damage;
       return false;
     }
-    return l.x>=0 && l.x<=canvas.width && l.y>=0 && l.y<=canvas.height;
+    return l.x >= 0 && l.x <= canvas.width && l.y >= 0 && l.y <= canvas.height;
   });
 }
 
-function checkBulletCollisions(){
-  for(let bi = bullets.length - 1; bi >= 0; bi--){
-    let b = bullets[bi];
-    for(let ei = enemies.length - 1; ei >= 0; ei--){
-      let e = enemies[ei];
-      if(Math.hypot(b.x - e.x, b.y - e.y) < e.size/2){
+function checkBulletCollisions() {
+  for (let bi = bullets.length - 1; bi >= 0; bi--) {
+    const b = bullets[bi];
+    for (let ei = enemies.length - 1; ei >= 0; ei--) {
+      const e = enemies[ei];
+      if (Math.hypot(b.x - e.x, b.y - e.y) < e.size / 2) {
         e.health -= 10;
         bullets.splice(bi, 1);
-        if(e.health <= 0){
-          createExplosion(e.x, e.y, (e.type==="triangle"?"cyan":e.type==="boss"?"yellow":"red"));
+        if (e.health <= 0) {
+          createExplosion(e.x, e.y,
+            e.type === "triangle" ? "cyan" :
+            e.type === "boss" ? "yellow" :
+            e.type === "mini-boss" ? "orange" : "red"
+          );
           enemies.splice(ei, 1);
-          score += (e.type==="boss"?100:10);
+          score += (e.type === "boss" ? 100 : e.type === "mini-boss" ? 50 : 10);
         }
         break;
       }
@@ -335,11 +301,12 @@ function checkBulletCollisions(){
   }
 }
 
-function updateExplosions(){
+// ======== Explosions Update ========
+function updateExplosions() {
   explosions = explosions.filter(ex => {
     ctx.fillStyle = ex.color;
     ctx.beginPath();
-    ctx.arc(ex.x,ex.y,ex.radius,0,Math.PI*2);
+    ctx.arc(ex.x, ex.y, ex.radius, 0, Math.PI * 2);
     ctx.fill();
     ex.x += ex.dx;
     ex.y += ex.dy;
@@ -348,79 +315,74 @@ function updateExplosions(){
   });
 }
 
-// ===== Draw Functions =====
-function drawPlayer(){
-  ctx.fillStyle="lime";
-  ctx.fillRect(player.x-player.size/2,player.y-player.size/2,player.size,player.size);
+// ======== Drawing ========
+function drawPlayer() {
+  ctx.fillStyle = "lime";
+  ctx.fillRect(player.x - player.size / 2, player.y - player.size / 2, player.size, player.size);
 }
 
-function drawBullets(){
-  bullets.forEach(b=>{
-    ctx.fillStyle="yellow";
-    ctx.fillRect(b.x,b.y,b.size,b.size);
-  });
+function drawBullets() {
+  ctx.fillStyle = "yellow";
+  bullets.forEach(b => ctx.fillRect(b.x, b.y, b.size, b.size));
 }
 
-function drawEnemies(){
-  enemies.forEach(e=>{
-    if(e.type==="normal"){
-      ctx.fillStyle="red";
-      ctx.fillRect(e.x-e.size/2,e.y-e.size/2,e.size,e.size);
-    } else if(e.type==="triangle"){
-      ctx.fillStyle="cyan";
+function drawEnemies() {
+  enemies.forEach(e => {
+    if (e.type === "normal") {
+      ctx.fillStyle = "red";
+      ctx.fillRect(e.x - e.size / 2, e.y - e.size / 2, e.size, e.size);
+    } else if (e.type === "triangle") {
+      ctx.fillStyle = "cyan";
       ctx.beginPath();
-      ctx.moveTo(e.x, e.y-e.size/2);
-      ctx.lineTo(e.x-e.size/2,e.y+e.size/2);
-      ctx.lineTo(e.x+e.size/2,e.y+e.size/2);
+      ctx.moveTo(e.x, e.y - e.size / 2);
+      ctx.lineTo(e.x - e.size / 2, e.y + e.size / 2);
+      ctx.lineTo(e.x + e.size / 2, e.y + e.size / 2);
       ctx.closePath();
       ctx.fill();
-    } else if(e.type==="boss"){
-      ctx.fillStyle="yellow";
+    } else if (e.type === "boss") {
+      ctx.fillStyle = "yellow";
       ctx.beginPath();
-      ctx.arc(e.x,e.y,e.size/2,0,Math.PI*2);
+      ctx.arc(e.x, e.y, e.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (e.type === "mini-boss") {
+      ctx.fillStyle = "orange";
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.size / 2, 0, Math.PI * 2);
       ctx.fill();
     }
   });
 }
 
-function drawLightning(){
-  lightning.forEach(l=>{
-    ctx.fillStyle="cyan";
-    ctx.fillRect(l.x,l.y,l.size,l.size);
-  });
+function drawLightning() {
+  ctx.fillStyle = "cyan";
+  lightning.forEach(l => ctx.fillRect(l.x, l.y, l.size, l.size));
 }
 
-function drawUI(){
-  ctx.fillStyle="white";
-  ctx.font="20px Arial";
-  ctx.fillText(`Score: ${score}`,20,30);
-  ctx.fillText(`Health: ${player.health}`,20,60);
-  ctx.fillText(`Wave: ${wave}`,20,90);
+function drawUI() {
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText(`Score: ${score}`, 20, 30);
+  ctx.fillText(`Health: ${player.health}`, 20, 60);
+  ctx.fillText(`Wave: ${wave}`, 20, 90);
 }
 
+// ======== Waves ========
 function nextWave() {
   if (enemies.length === 0) {
     wave++;
-
     if (wave % 3 === 0) {
-      // Full boss waves (3, 6, 9, etc.)
       spawnBoss();
     } else {
-      // Normal waves
       spawnEnemies(3 + wave);
       spawnTriangleEnemies(Math.floor(wave / 2));
-
-      // Mini-boss on wave 5
-      if (wave === 5) {
-        spawnMiniBoss();
-      }
+      if (wave === 5) spawnMiniBoss();
     }
   }
 }
 
-// ======== Main Game Loop ========
-function gameLoop(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+// ======== Main Loop ========
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   movePlayer();
   handleShooting();
   updateBullets();
@@ -435,14 +397,14 @@ function gameLoop(){
   drawUI();
   nextWave();
 
-  if(player.health>0){
+  if (player.health > 0) {
     requestAnimationFrame(gameLoop);
   } else {
-    ctx.fillStyle="white";
-    ctx.font="50px Arial";
-    ctx.fillText("GAME OVER",canvas.width/2-150,canvas.height/2);
-    ctx.font="30px Arial";
-    ctx.fillText(`Final Score: ${score}`,canvas.width/2-100,canvas.height/2+50);
+    ctx.fillStyle = "white";
+    ctx.font = "50px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 150, canvas.height / 2);
+    ctx.font = "30px Arial";
+    ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 100, canvas.height / 2 + 50);
   }
 }
 
