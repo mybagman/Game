@@ -387,13 +387,22 @@ function drawUI(){
   ctx.fillText(`Wave: ${wave}`,20,90);
 }
 
-function nextWave(){
-  if(enemies.length===0){
+function nextWave() {
+  if (enemies.length === 0) {
     wave++;
-    if(wave % 3 === 0) spawnBoss();
-    else{
-      spawnEnemies(3+wave);
-      spawnTriangleEnemies(Math.floor(wave/2));
+
+    if (wave % 3 === 0) {
+      // Full boss waves (3, 6, 9, etc.)
+      spawnBoss();
+    } else {
+      // Normal waves
+      spawnEnemies(3 + wave);
+      spawnTriangleEnemies(Math.floor(wave / 2));
+
+      // Mini-boss on wave 5
+      if (wave === 5) {
+        spawnMiniBoss();
+      }
     }
   }
 }
