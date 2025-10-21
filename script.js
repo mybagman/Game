@@ -86,8 +86,8 @@ function spawnBoss() {
   });
 }
 
+// ======== Boss Logic ========
 function updateBoss(boss) {
-  // Boss slow circular movement
   boss.angle = boss.angle || 0;
   boss.angle += 0.01;
   boss.x = canvas.width/2 + Math.cos(boss.angle) * 150;
@@ -98,7 +98,7 @@ function updateBoss(boss) {
   boss.spawnTimer++;
   if(boss.spawnTimer > 200){
     boss.spawnTimer = 0;
-    let newMinion = {
+    minionsToAdd.push({
       x: boss.x + (Math.random()-0.5)*100,
       y: boss.y + (Math.random()-0.5)*100,
       size: 30,
@@ -106,8 +106,7 @@ function updateBoss(boss) {
       health: 30,
       type: "normal",
       shootTimer: 0
-    };
-    minionsToAdd.push(newMinion); // safe add after filter
+    });
   }
 
   // Shoot in 4 directions
@@ -185,8 +184,6 @@ function updateEnemies() {
   enemies = enemies.filter(e => {
     if(e.type === "boss") {
       updateBoss(e);
-
-      // Boss-player collision
       const dist = Math.hypot(player.x - e.x, player.y - e.y);
       if(dist < (player.size/2 + e.size/2)){
         player.health -= 40;
@@ -227,37 +224,10 @@ function updateEnemies() {
     }
   });
 
-  // Add minions safely after filtering
   if(minionsToAdd.length > 0){
     enemies.push(...minionsToAdd);
     minionsToAdd = [];
   }
-}
-      // Triangle shooting
-      if(e.type==="triangle"){
-        e.shootTimer++;
-        if(e.shootTimer>100){
-          e.shootTimer=0;
-          lightning.push({
-            x:e.x,
-            y:e.y,
-            dx:(dx/dist)*5,
-            dy:(dy/dist)*5,
-            size:6,
-            damage:20
-          });
-        }
-      }
-
-      // Collision with player
-      if(dist < (player.size/2 + e.size/2)){
-        player.health -= (e.type==="triangle"?30:20);
-        createExplosion(e.x,e.y,(e.type==="triangle"?"cyan":"red"));
-        return false;
-      }
-    }
-    return true;
-  });
 }
 
 function updateLightning(){
@@ -304,6 +274,7 @@ function updateExplosions(){
   });
 }
 
+// ===== Draw Functions =====
 function drawPlayer(){
   ctx.fillStyle="lime";
   ctx.fillRect(player.x-player.size/2,player.y-player.size/2,player.size,player.size);
@@ -364,15 +335,6 @@ function nextWave(){
   }
 }
 
-      if(dist < (player.size/2 + e.size/2)){
-        player.health -= (e.type==="triangle"?30:20);
-        createExplosion(e.x,e.y,(e.type==="triangle"?"cyan":"red"));
-        return false;
-      }
-      return true;
-    }
-  });
-}
 // ======== Main Game Loop ========
 function gameLoop(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
