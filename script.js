@@ -245,14 +245,25 @@ function updateBullets(){
 
 function updateEnemies() {
   enemies = enemies.filter(e => {
-    if(e.type === "boss") {
-      updateBoss(e);
-      const dist = Math.hypot(player.x - e.x, player.y - e.y);
-      if(dist < (player.size/2 + e.size/2)){
-        player.health -= 40;
-        createExplosion(e.x, e.y, "yellow");
-      }
-      return true;
+    if (e.type === "boss") {
+  updateBoss(e);
+  const dist = Math.hypot(player.x - e.x, player.y - e.y);
+  if (dist < (player.size/2 + e.size/2)) {
+    player.health -= 40;
+    createExplosion(e.x, e.y, "yellow");
+  }
+  return true;
+
+} else if (e.type === "mini-boss") {
+  updateMiniBoss(e);
+  const dist = Math.hypot(player.x - e.x, player.y - e.y);
+  if (dist < (player.size/2 + e.size/2)) {
+    player.health -= 20;
+    createExplosion(e.x, e.y, "orange");
+  }
+  return true;
+  
+} else {
     } else {
       const dx = player.x - e.x;
       const dy = player.y - e.y;
