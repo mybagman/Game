@@ -62,6 +62,16 @@ function spawnEnemies(count) {
   }
 }
 
+function spawnMiniBoss() {
+  enemies.push({
+    x: canvas.width/2,
+    y: 80,
+    size: 40,              // half the size of normal boss
+    health: 150 + wave*50, // scaled down health
+    type: "mini-boss"
+  });
+}
+
 function spawnTriangleEnemies(count) {
   for(let i=0;i<count;i++){
     enemies.push({
@@ -84,6 +94,59 @@ function spawnBoss() {
     health: 300 + wave*100,
     type: "boss"
   });
+}
+
+function updateMiniBoss(boss) {
+  boss.angle = boss.angle || 0;
+  boss.angle += 0.02; // maybe move slightly faster than full boss
+  boss.x = canvas.width/2 + Math.cos(boss.angle) * 100; // smaller orbit
+  boss.y = 80 + Math.sin(boss.angle) * 30;
+
+  // spawn minions less often
+  boss.spawnTimer = boss.spawnTimer || 0;
+  boss.spawnTimer++;
+  if(boss.spawnTimer > 300){
+    boss.spawnTimer = 0;
+    minionsToAdd.push({
+      x: boss.x + (Math.random()-0.5)*80,
+      y: boss.y + (Math.random()-0.5)*80,
+      size: 30,
+      speed: 2,
+      health: 30,
+      type: "normal",
+      shootTimer: 0
+    });
+  }
+
+  // shoot in 4 directions with less damage
+  boss.shootTimer = boss.shootTimer || 0;
+  boss.shootTimer++;
+  if(boss.shootTimer > 180){ // slower shooting than full boss
+    boss.shootTimer = 0;
+    let dirs = [
+      {x:0, y:-1},
+      {x:0, y:1},
+      {x:-1, y:0},
+      {x:1, y:0}
+    ];
+    dirs.forEach(d => {
+      lightning.push({
+        x: boss.x,
+        y: boss.y,
+        dx: d.x*5,
+        dy: d.y*5,
+        size:6,
+        damage:10
+      });
+    });
+  }
+
+  // collision with player
+  const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
+  if(dist < (player.size/2 + boss.size/2)){
+    player.health -= 20; // less damage than full boss
+    createExplosion(boss.x, boss.y, "orange");
+  }
 }
 
 // ======== Boss Logic ========
@@ -272,6 +335,14 @@ function updateExplosions(){
     ex.life--;
     return ex.life > 0;
   });
+}
+
+if(e.type === "boss") {
+  updateBoss(e);
+} else if(e.type === "mini-boss") {
+  updateMiniBoss(e);
+} else {
+  // normal & triangle logic...
 }
 
 // ===== Draw Functions =====
