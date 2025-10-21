@@ -98,7 +98,6 @@ function updateBoss(boss) {
   boss.spawnTimer++;
   if(boss.spawnTimer > 200){
     boss.spawnTimer = 0;
-    // Instead of pushing inside the filter loop, push to a temporary array
     let newMinion = {
       x: boss.x + (Math.random()-0.5)*100,
       y: boss.y + (Math.random()-0.5)*100,
@@ -108,7 +107,7 @@ function updateBoss(boss) {
       type: "normal",
       shootTimer: 0
     };
-    minionsToAdd.push(newMinion); // temp array to add after updateEnemies
+    minionsToAdd.push(newMinion); // safe add after filter
   }
 
   // Shoot in 4 directions
@@ -133,7 +132,7 @@ function updateBoss(boss) {
       });
     });
   }
-} }
+}
 
 // ======== Explosions ========
 function createExplosion(x, y, color="red") {
@@ -182,19 +181,57 @@ function updateBullets(){
   });
 }
 
-function updateEnemies(){
+function updateEnemies() {
   enemies = enemies.filter(e => {
-    if(e.type!=="boss"){
+    if(e.type === "boss") {
+      updateBoss(e);
+
+      // Boss-player collision
+      const dist = Math.hypot(player.x - e.x, player.y - e.y);
+      if(dist < (player.size/2 + e.size/2)){
+        player.health -= 40;
+        createExplosion(e.x, e.y, "yellow");
+      }
+      return true;
+    } else {
       const dx = player.x - e.x;
       const dy = player.y - e.y;
-      const dist = Math.hypot(dx,dy);
+      const dist = Math.hypot(dx, dy);
       e.x += (dx/dist)*e.speed;
       e.y += (dy/dist)*e.speed;
 
-      // At the end of updateEnemies()
-if(minionsToAdd.length > 0){
-  enemies.push(...minionsToAdd);
-  minionsToAdd = [];
+      // Triangle shooting
+      if(e.type==="triangle"){
+        e.shootTimer++;
+        if(e.shootTimer>100){
+          e.shootTimer=0;
+          lightning.push({
+            x:e.x,
+            y:e.y,
+            dx:(dx/dist)*5,
+            dy:(dy/dist)*5,
+            size:6,
+            damage:20
+          });
+        }
+      }
+
+      // Collision with player
+      if(dist < (player.size/2 + e.size/2)){
+        player.health -= (e.type==="triangle"?30:20);
+        createExplosion(e.x,e.y,(e.type==="triangle"?"cyan":"red"));
+        return false;
+      }
+
+      return true;
+    }
+  });
+
+  // Add minions safely after filtering
+  if(minionsToAdd.length > 0){
+    enemies.push(...minionsToAdd);
+    minionsToAdd = [];
+  }
 }
       // Triangle shooting
       if(e.type==="triangle"){
@@ -326,40 +363,6 @@ function nextWave(){
     }
   }
 }
-
-function updateEnemies(){
-  enemies = enemies.filter(e => {
-    if(e.type === "boss"){
-      updateBoss(e);
-      // Collision with player
-      const dist = Math.hypot(player.x - e.x, player.y - e.y);
-      if(dist < (player.size/2 + e.size/2)){
-        player.health -= 40;
-        createExplosion(e.x, e.y, "yellow");
-      }
-      return true;
-    } else {
-      // existing normal & triangle logic...
-      const dx = player.x - e.x;
-      const dy = player.y - e.y;
-      const dist = Math.hypot(dx, dy);
-      e.x += (dx/dist)*e.speed;
-      e.y += (dy/dist)*e.speed;
-
-      if(e.type==="triangle"){
-        e.shootTimer++;
-        if(e.shootTimer>100){
-          e.shootTimer=0;
-          lightning.push({
-            x:e.x,
-            y:e.y,
-            dx:(dx/dist)*5,
-            dy:(dy/dist)*5,
-            size:6,
-            damage:20
-          });
-        }
-      }
 
       if(dist < (player.size/2 + e.size/2)){
         player.health -= (e.type==="triangle"?30:20);
