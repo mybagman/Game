@@ -368,16 +368,30 @@ function drawUI() {
 }
 
 // ======== Waves ========
+const waves = [
+  { enemies: [{ type: "normal", count: 3 }] },                
+  { enemies: [{ type: "triangle", count: 2 }, { type: "normal", count: 2 }] }, 
+  { enemies: [{ type: "boss", count: 1 }] },                  
+  { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 2 }] }, 
+  { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] } 
+];
+
+function spawnWave(waveIndex) {
+  if (waveIndex >= waves.length) return; // No more waves
+  const waveData = waves[waveIndex];
+  
+  waveData.enemies.forEach(group => {
+    if (group.type === "normal") spawnEnemies(group.count);
+    if (group.type === "triangle") spawnTriangleEnemies(group.count);
+    if (group.type === "boss") for(let i=0;i<group.count;i++) spawnBoss();
+    if (group.type === "mini-boss") for(let i=0;i<group.count;i++) spawnMiniBoss();
+  });
+}
+
 function nextWave() {
   if (enemies.length === 0) {
-    wave++;
-    if (wave % 3 === 0) {
-      spawnBoss();
-    } else {
-      spawnEnemies(3 + wave);
-      spawnTriangleEnemies(Math.floor(wave / 2));
-      if (wave === 5) spawnMiniBoss();
-    }
+    spawnWave(wave); // spawn current wave
+    wave++;          // increment for next wave
   }
 }
 
@@ -410,6 +424,5 @@ function gameLoop() {
 }
 
 // ======== Start Game ========
-spawnEnemies(3);
-spawnTriangleEnemies(1);
+spawnWave(wave); // start the first wave
 gameLoop();
