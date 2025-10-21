@@ -114,8 +114,8 @@ function updateEnemies(){
       e.shootTimer++; if(e.shootTimer>100){ e.shootTimer=0; lightning.push({x:e.x, y:e.y, dx:(dx/dist)*5, dy:(dy/dist)*5, size:6, damage:20}); }
     }
     else if(e.type==="shield"){
-      let tri=enemies.find(t=>t.type==="triangle" && t.x===e.protects);
-      if(tri){ e.x=tri.x + (e.x-tri.x); e.y=tri.y + (e.y-tri.y); }
+      let tri=enemies.find((t,i)=>t.type==="triangle" && i===e.protects);
+      if(tri){ e.x = tri.x + (e.x-tri.x); e.y = tri.y + (e.y-tri.y); }
       else{ const dx=player.x-e.x, dy=player.y-e.y, dist=Math.hypot(dx,dy); e.x+=(dx/dist)*e.speed; e.y+=(dy/dist)*e.speed; e.type="normal"; }
     }
     else{ const dx=player.x-e.x, dy=player.y-e.y, dist=Math.hypot(dx,dy); e.x+=(dx/dist)*e.speed; e.y+=(dy/dist)*e.speed; }
@@ -135,7 +135,7 @@ function checkBulletCollisions(){
   for(let bi=bullets.length-1;bi>=0;bi--){ let b=bullets[bi];
     for(let ei=enemies.length-1;ei>=0;ei--){ let e=enemies[ei];
       if(Math.hypot(b.x-e.x,b.y-e.y)<e.size/2){ e.health-=10; bullets.splice(bi,1);
-        if(e.health<=0){ createExplosion(e.x,e.y,(e.type==="triangle"?"cyan":e.type==="boss"?"yellow":"red")); enemies.splice(ei,1); score+=(e.type==="boss"?100:10); } break;
+        if(e.health<=0){ createExplosion(e.x,e.y,(e.type==="triangle"?"cyan":e.type==="boss"?"yellow":e.type==="mini-boss"?"magenta":"red")); enemies.splice(ei,1); score+=(e.type==="boss"?100:10); } break;
       }
     }
   }
@@ -163,9 +163,9 @@ function drawUI(){ ctx.fillStyle="white"; ctx.font="20px Arial"; ctx.fillText(`S
 // ====== Waves ======
 function nextWave(){
   if(enemies.length===0){
-    switch(++wave){
-      case 1: spawnEnemies(3+wave); break;
-      case 2: spawnEnemies(2+wave); spawnTriangleEnemies(1+Math.floor(wave/2)); break;
+    switch(wave){
+      case 1: spawnEnemies(3); break;
+      case 2: spawnEnemies(4); spawnTriangleEnemies(2); break;
       case 3: spawnBoss(); break;
       case 4:
         let numTriangles=2;
@@ -174,13 +174,14 @@ function nextWave(){
           enemies.push({x:triX,y:triY,size:30,speed:1.5,health:40,type:"triangle",shootTimer:0,shieldSquares:[]});
           for(let j=0;j<4;j++){
             let offsetX=(j%2===0?-1:1)*40, offsetY=(j<2?-1:1)*40;
-            enemies.push({x:triX+offsetX,y:triY+offsetY,size:30,speed:2,health:30,type:"shield",protects:triX});
+            enemies.push({x:triX+offsetX,y:triY+offsetY,size:30,speed:2,health:30,type:"shield",protects:i});
           }
         }
         break;
-      case 5: spawnEnemies(3+wave); spawnTriangleEnemies(Math.floor(wave/2)); spawnMiniBoss(); break;
+      case 5: spawnEnemies(5); spawnTriangleEnemies(2); spawnMiniBoss(); break;
       default: spawnEnemies(3+wave); spawnTriangleEnemies(Math.floor(wave/2)); if(wave%3===0) spawnBoss(); break;
     }
+    wave++;
   }
 }
 
