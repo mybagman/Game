@@ -337,14 +337,6 @@ function updateExplosions(){
   });
 }
 
-if(e.type === "boss") {
-  updateBoss(e);
-} else if(e.type === "mini-boss") {
-  updateMiniBoss(e);
-} else {
-  // normal & triangle logic...
-}
-
 // ===== Draw Functions =====
 function drawPlayer(){
   ctx.fillStyle="lime";
