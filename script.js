@@ -17,6 +17,7 @@ let minionsToAdd = [];
 
 let lastDir = { x: 1, y: 0 };
 let canShoot = true;
+let highScores = JSON.parse(localStorage.getItem("highScores")) || [];
 
 let player = {
   x: canvas.width / 2,
