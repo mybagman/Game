@@ -415,9 +415,9 @@ function drawUI() {
 // ======== Waves ========
 const waves = [
   { enemies: [{ type: "normal", count: 3 }] },                
-  { enemies: [{ type: "triangle", count: 2 }, { type: "normal", count: 2 }] }, 
+  { enemies: [{ type: "triangle", count: 2 }, { type: "normal", count: 3 }] }, 
   { enemies: [{ type: "boss", count: 1 }] },                  
-  { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 2 }] }, 
+  { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] }, 
   { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] } 
 ];
 
@@ -433,7 +433,7 @@ function spawnWave(waveIndex) {
   });
 }
 
-// Spawn tunnel only on Wave 6
+// Spawn tunnel only on Wave 1
 if (waveIndex === 5) { // (0-based index, so wave 6)
   spawnTunnel();
 }
