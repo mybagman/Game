@@ -439,8 +439,36 @@ function spawnWave(waveIndex) {
   // Spawn tunnel if it exists
   let gap = null;
   if (waveData.tunnel) {
-    gap = spawnTunnel();
+    gap = spawnTunnel(); // tunnel adds walls and returns gap info
   }
+
+  // Spawn enemies
+  if (waveData.enemies) {
+    waveData.enemies.forEach(group => {
+      // Use proper spawn functions for bosses and mini-bosses
+      if (group.type === "normal") {
+        for (let i = 0; i < group.count; i++) {
+          let spawnY = gap ? gap.gapY + Math.random() * 100 - 50 : Math.random() * canvas.height / 2;
+          enemies.push({
+            x: gap ? gap.x + Math.random() * 50 : Math.random() * canvas.width,
+            y: spawnY,
+            size: 30,
+            speed: 2,
+            health: 30,
+            type: "normal",
+            shootTimer: 0
+          });
+        }
+      } else if (group.type === "triangle") {
+        for (let i = 0; i < group.count; i++) spawnTriangleEnemies(1);
+      } else if (group.type === "boss") {
+        for (let i = 0; i < group.count; i++) spawnBoss();
+      } else if (group.type === "mini-boss") {
+        for (let i = 0; i < group.count; i++) spawnMiniBoss();
+      }
+    });
+  }
+}
 
   // Spawn enemies
 if (waveData.enemies) {
