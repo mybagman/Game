@@ -14,7 +14,7 @@ let enemies = [];
 let enemyBullets = [];
 let wave = 1;
 let score = 0;
-let tunnelWalls = []; // top and bottom walls
+let tunnel = null;
 let miniBoss = null;
 let gameOver = false;
 
@@ -32,6 +32,7 @@ function updatePlayer() {
   player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
   player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
 
+  // One bullet per press
   if (keys["Space"] && !player.shooting) {
     bullets.push({ x: player.x + player.w, y: player.y + player.h / 2 - 2, w: 8, h: 4, color: "white", speed: 8 });
     player.shooting = true;
@@ -59,15 +60,11 @@ function updateBullets() {
 
 // ================== ENEMIES ==================
 function spawnEnemies() {
-  // Spawn new wave if no enemies, no miniBoss, no tunnel walls
-  if (enemies.length === 0 && !miniBoss && tunnelWalls.length === 0) {
+  if (enemies.length === 0 && !tunnel && !miniBoss) {
     wave++;
     if (wave === 6) {
-      // Wave 6: spawn tunnel walls and miniBoss
-      const wallHeight = canvas.height / 3;
-      tunnelWalls.push({ x: canvas.width, y: 0, w: 200, h: wallHeight, color: "purple", speed: 3 }); // top wall
-      tunnelWalls.push({ x: canvas.width, y: canvas.height - wallHeight, w: 200, h: wallHeight, color: "purple", speed: 3 }); // bottom wall
-
+      // Spawn tunnel and mini-boss
+      tunnel = { x: canvas.width, w: 200, color: "purple", speed: 3 };
       miniBoss = { x: canvas.width - 100, y: canvas.height / 2 - 40, w: 80, h: 80, color: "yellow", hp: 10, fireRate: 60, fireTimer: 0 };
       return;
     }
@@ -139,28 +136,34 @@ function updateMiniBoss() {
   ctx.fillRect(miniBoss.x, miniBoss.y, miniBoss.w, miniBoss.h);
 }
 
-// ================== TUNNEL WALLS ==================
-function updateTunnelWalls() {
-  if (tunnelWalls.length === 0) return;
+// ================== TUNNEL ==================
+function updateTunnel() {
+  if (!tunnel) return;
 
-  tunnelWalls.forEach((wall, i) => {
-    wall.x -= wall.speed;
+  tunnel.x -= tunnel.speed;
 
-    // Draw wall
-    ctx.fillStyle = wall.color;
-    ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
+  // Draw two impassable blocks (top and bottom)
+  const topBlock = { x: tunnel.x, y: 0, w: tunnel.w, h: canvas.height / 3 };
+  const bottomBlock = { x: tunnel.x, y: canvas.height * 2 / 3, w: tunnel.w, h: canvas.height / 3 };
 
-    // Damage player if touching wall
-    if (rectsCollide(player, wall)) {
-      player.hp = 0;
-      gameOver = true;
-    }
+  ctx.fillStyle = tunnel.color;
+  ctx.fillRect(topBlock.x, topBlock.y, topBlock.w, topBlock.h);
+  ctx.fillRect(bottomBlock.x, bottomBlock.y, bottomBlock.w, bottomBlock.h);
 
-    // Remove wall if offscreen
-    if (wall.x + wall.w < 0) {
-      tunnelWalls.splice(i, 1);
-    }
-  });
+  // Damage player if touching either block
+  if (
+    rectsCollide(player, topBlock) ||
+    rectsCollide(player, bottomBlock)
+  ) {
+    player.hp = 0;
+    gameOver = true;
+  }
+
+  // Remove tunnel and mini-boss when tunnel passes left edge
+  if (tunnel.x + tunnel.w < 0) {
+    tunnel = null;
+    miniBoss = null;
+  }
 }
 
 // ================== DRAW ==================
@@ -190,18 +193,6 @@ function draw() {
     ctx.fillRect(b.x, b.y, b.w, b.h);
   });
 
-  // Tunnel walls
-  tunnelWalls.forEach(w => {
-    ctx.fillStyle = w.color;
-    ctx.fillRect(w.x, w.y, w.w, w.h);
-  });
-
-  // Mini-boss
-  if (miniBoss) {
-    ctx.fillStyle = miniBoss.color;
-    ctx.fillRect(miniBoss.x, miniBoss.y, miniBoss.w, miniBoss.h);
-  }
-
   // HUD
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
@@ -223,7 +214,7 @@ function loop() {
     updateBullets();
     updateEnemies();
     updateMiniBoss();
-    updateTunnelWalls();
+    updateTunnel();
     spawnEnemies();
   }
   draw();
