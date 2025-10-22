@@ -443,22 +443,13 @@ function spawnWave(waveIndex) {
   }
 
   // Spawn enemies
-  if (waveData.enemies) {
-    waveData.enemies.forEach(group => {
-      for (let i = 0; i < group.count; i++) {
-        let spawnY = gap ? gap.gapY + Math.random() * 100 - 50 : Math.random() * canvas.height / 2;
-        enemies.push({
-          x: gap ? gap.x + Math.random() * 50 : Math.random() * canvas.width,
-          y: spawnY,
-          size: 30,
-          speed: group.type === "triangle" ? 1.5 : 2,
-          health: group.type === "triangle" ? 40 : 30,
-          type: group.type,
-          shootTimer: 0
-        });
-      }
-    });
-  }
+if (waveData.enemies) {
+  waveData.enemies.forEach(group => {
+    if (group.type === "normal") spawnEnemies(group.count);
+    else if (group.type === "triangle") spawnTriangleEnemies(group.count);
+    else if (group.type === "boss") for (let i = 0; i < group.count; i++) spawnBoss();
+    else if (group.type === "mini-boss") for (let i = 0; i < group.count; i++) spawnMiniBoss();
+  });
 }
 
 function nextWave() {
