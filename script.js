@@ -1,481 +1,235 @@
+// ================== GAME SETUP ==================
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
+canvas.width = 800;
+canvas.height = 600;
 
-// ======== Setup ========
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
-
-// ======== Game Variables ========
 let keys = {};
+document.addEventListener("keydown", e => keys[e.code] = true);
+document.addEventListener("keyup", e => keys[e.code] = false);
+
+let player = { x: 100, y: canvas.height / 2, w: 30, h: 30, color: "cyan", speed: 5, hp: 3 };
 let bullets = [];
 let enemies = [];
-let lightning = [];
-let explosions = [];
-let score = 0;
+let enemyBullets = [];
 let wave = 1;
-let minionsToAdd = [];
-let tunnels = [];
+let score = 0;
+let tunnels = []; // now can hold multiple tunnel walls
+let miniBoss = null;
+let gameOver = false;
 
-function spawnTunnel() {
-  tunnels.push({
-    x: canvas.width,
-    y: canvas.height / 3,
-    width: 200,
-    height: canvas.height / 3,
-    speed: 2,
-    active: true,
-    entered: false
-  });
+// ================== UTILITIES ==================
+function rectsCollide(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-let lastDir = { x: 1, y: 0 };
-let canShoot = true;
-let highScores = JSON.parse(localStorage.getItem("highScores")) || [];
+// ================== PLAYER ==================
+function updatePlayer() {
+  if (keys["ArrowUp"]) player.y -= player.speed;
+  if (keys["ArrowDown"]) player.y += player.speed;
+  if (keys["ArrowLeft"]) player.x -= player.speed;
+  if (keys["ArrowRight"]) player.x += player.speed;
+  player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
+  player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
 
-let player = {
-  x: canvas.width / 2,
-  y: canvas.height / 2,
-  size: 30,
-  speed: 5,
-  health: 100
-};
-
-// ======== Controls ========
-document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
-
-// ======== Shoot ========
-function shoot() {
-  let dx = lastDir.x;
-  let dy = lastDir.y;
-  const mag = Math.hypot(dx, dy) || 1;
-  dx /= mag;
-  dy /= mag;
-  bullets.push({
-    x: player.x,
-    y: player.y,
-    size: 6,
-    dx: dx * 10,
-    dy: dy * 10
-  });
-}
-
-// ======== Enemy Spawning ========
-function spawnEnemies(count) {
-  for (let i = 0; i < count; i++) {
-    enemies.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * (canvas.height / 2),
-      size: 30,
-      speed: 2,
-      health: 30,
-      type: "normal",
-      shootTimer: 0
-    });
+  // One bullet per press
+  if (keys["Space"] && !player.shooting) {
+    bullets.push({ x: player.x + player.w, y: player.y + player.h / 2 - 2, w: 8, h: 4, color: "white", speed: 8 });
+    player.shooting = true;
   }
+  if (!keys["Space"]) player.shooting = false;
 }
 
-function spawnTriangleEnemies(count) {
-  for (let i = 0; i < count; i++) {
-    enemies.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * (canvas.height / 2),
-      size: 30,
-      speed: 1.5,
-      health: 40,
-      type: "triangle",
-      shootTimer: 0
-    });
-  }
-}
-
-function spawnBoss() {
-  enemies.push({
-    x: canvas.width / 2,
-    y: 100,
-    size: 80,
-    health: 300 + wave * 100,
-    type: "boss"
-  });
-}
-
-function spawnMiniBoss() {
-  enemies.push({
-    x: canvas.width / 2,
-    y: 120,
-    size: 40,
-    health: 150 + wave * 50,
-    type: "mini-boss"
-  });
-}
-
-// ======== Boss Logic ========
-function updateBoss(boss) {
-  boss.angle = boss.angle || 0;
-  boss.angle += 0.01;
-  boss.x = canvas.width / 2 + Math.cos(boss.angle) * 150;
-  boss.y = 80 + Math.sin(boss.angle) * 50;
-
-  boss.spawnTimer = boss.spawnTimer || 0;
-  boss.spawnTimer++;
-  if (boss.spawnTimer > 200) {
-    boss.spawnTimer = 0;
-    minionsToAdd.push({
-      x: boss.x + (Math.random() - 0.5) * 100,
-      y: boss.y + (Math.random() - 0.5) * 100,
-      size: 30,
-      speed: 2,
-      health: 30,
-      type: "normal",
-      shootTimer: 0
-    });
-  }
-
-  boss.shootTimer = boss.shootTimer || 0;
-  boss.shootTimer++;
-  if (boss.shootTimer > 150) {
-    boss.shootTimer = 0;
-    let dirs = [
-      { x: 0, y: -1 },
-      { x: 0, y: 1 },
-      { x: -1, y: 0 },
-      { x: 1, y: 0 }
-    ];
-    dirs.forEach(d => {
-      lightning.push({
-        x: boss.x,
-        y: boss.y,
-        dx: d.x * 5,
-        dy: d.y * 5,
-        size: 6,
-        damage: 20
-      });
-    });
-  }
-}
-
-function updateMiniBoss(boss) {
-  boss.angle = boss.angle || 0;
-  boss.angle += 0.02;
-  boss.x = canvas.width / 2 + Math.cos(boss.angle) * 100;
-  boss.y = 80 + Math.sin(boss.angle) * 30;
-
-  boss.spawnTimer = boss.spawnTimer || 0;
-  boss.spawnTimer++;
-  if (boss.spawnTimer > 300) {
-    boss.spawnTimer = 0;
-    minionsToAdd.push({
-      x: boss.x + (Math.random() - 0.5) * 80,
-      y: boss.y + (Math.random() - 0.5) * 80,
-      size: 25,
-      speed: 2,
-      health: 30,
-      type: "normal",
-      shootTimer: 0
-    });
-  }
-
-  boss.shootTimer = boss.shootTimer || 0;
-  boss.shootTimer++;
-  if (boss.shootTimer > 180) {
-    boss.shootTimer = 0;
-    let dirs = [
-      { x: 0, y: -1 },
-      { x: 0, y: 1 },
-      { x: -1, y: 0 },
-      { x: 1, y: 0 }
-    ];
-    dirs.forEach(d => {
-      lightning.push({
-        x: boss.x,
-        y: boss.y,
-        dx: d.x * 5,
-        dy: d.y * 5,
-        size: 6,
-        damage: 10
-      });
-    });
-  }
-}
-
-// ======== Explosions ========
-function createExplosion(x, y, color = "red") {
-  for (let i = 0; i < 20; i++) {
-    explosions.push({
-      x: x,
-      y: y,
-      dx: (Math.random() - 0.5) * 6,
-      dy: (Math.random() - 0.5) * 6,
-      radius: Math.random() * 4 + 2,
-      color: color,
-      life: 30
-    });
-  }
-}
-
-// ======== Movement ========
-function movePlayer() {
-  if (keys["w"] || keys["arrowup"]) { player.y -= player.speed; lastDir = { x: 0, y: -1 }; }
-  if (keys["s"] || keys["arrowdown"]) { player.y += player.speed; lastDir = { x: 0, y: 1 }; }
-  if (keys["a"] || keys["arrowleft"]) { player.x -= player.speed; lastDir = { x: -1, y: 0 }; }
-  if (keys["d"] || keys["arrowright"]) { player.x += player.speed; lastDir = { x: 1, y: 0 }; }
-}
-
-function handleShooting() {
-  if (keys[" "] && canShoot) {
-    shoot();
-    canShoot = false;
-  }
-  if (!keys[" "]) canShoot = true;
-}
-
+// ================== BULLETS ==================
 function updateBullets() {
-  bullets = bullets.filter(b => {
-    b.x += b.dx;
-    b.y += b.dy;
-    return b.x >= 0 && b.x <= canvas.width && b.y >= 0 && b.y <= canvas.height;
+  bullets.forEach((b, i) => {
+    b.x += b.speed;
+    if (b.x > canvas.width) bullets.splice(i, 1);
+  });
+
+  enemyBullets.forEach((b, i) => {
+    b.x -= b.speed;
+    if (rectsCollide(b, player)) {
+      enemyBullets.splice(i, 1);
+      player.hp--;
+      if (player.hp <= 0) gameOver = true;
+    }
+    if (b.x + b.w < 0) enemyBullets.splice(i, 1);
   });
 }
 
-// ======== Tunnel Logic ========
-function updateTunnels() {
-  for (let i = tunnels.length - 1; i >= 0; i--) {
-    const t = tunnels[i];
-    if (!t.active) continue;
+// ================== ENEMIES ==================
+function spawnEnemies() {
+  if (enemies.length === 0 && tunnels.length === 0 && !miniBoss) {
+    wave++;
 
-    // Move tunnel left
+    if (wave === 6) {
+      // Create top and bottom tunnel walls
+      const tunnelSpeed = 3;
+      const wallHeight = canvas.height / 3;
+
+      tunnels.push(
+        { x: canvas.width, y: 0, w: 200, h: wallHeight, color: "purple", speed: tunnelSpeed },
+        { x: canvas.width, y: canvas.height - wallHeight, w: 200, h: wallHeight, color: "purple", speed: tunnelSpeed }
+      );
+
+      // Mini-boss that stays on right side
+      miniBoss = {
+        x: canvas.width - 100,
+        y: canvas.height / 2 - 40,
+        w: 80,
+        h: 80,
+        color: "yellow",
+        hp: 15,
+        fireRate: 60,
+        fireTimer: 0
+      };
+      return;
+    }
+
+    // Regular enemy waves
+    for (let i = 0; i < wave * 3; i++) {
+      enemies.push({
+        x: canvas.width + Math.random() * 200,
+        y: Math.random() * (canvas.height - 40),
+        w: 30,
+        h: 30,
+        color: wave % 2 === 0 ? "orange" : "red",
+        speed: 2
+      });
+    }
+  }
+}
+
+function updateEnemies() {
+  enemies.forEach((e, i) => {
+    e.x -= e.speed;
+
+    // Collide with player
+    if (rectsCollide(e, player)) {
+      enemies.splice(i, 1);
+      player.hp--;
+      if (player.hp <= 0) gameOver = true;
+    }
+
+    // Collide with bullets
+    bullets.forEach((b, j) => {
+      if (rectsCollide(b, e)) {
+        bullets.splice(j, 1);
+        enemies.splice(i, 1);
+        score += 10;
+      }
+    });
+
+    if (e.x + e.w < 0) enemies.splice(i, 1);
+  });
+}
+
+// ================== MINI-BOSS ==================
+function updateMiniBoss() {
+  if (!miniBoss) return;
+
+  // Fire bullets
+  miniBoss.fireTimer++;
+  if (miniBoss.fireTimer >= miniBoss.fireRate) {
+    miniBoss.fireTimer = 0;
+    // Triple shot
+    enemyBullets.push({ x: miniBoss.x, y: miniBoss.y + miniBoss.h / 2 - 4, w: 8, h: 8, color: "red", speed: 5 });
+    enemyBullets.push({ x: miniBoss.x, y: miniBoss.y + miniBoss.h / 2 - 20, w: 8, h: 8, color: "red", speed: 5 });
+    enemyBullets.push({ x: miniBoss.x, y: miniBoss.y + miniBoss.h / 2 + 12, w: 8, h: 8, color: "red", speed: 5 });
+  }
+
+  // Damage from player bullets
+  bullets.forEach((b, j) => {
+    if (rectsCollide(b, miniBoss)) {
+      bullets.splice(j, 1);
+      miniBoss.hp--;
+      if (miniBoss.hp <= 0) {
+        miniBoss = null;
+        tunnels = []; // clear tunnels once mini-boss dies
+        score += 200;
+      }
+    }
+  });
+
+  // Draw mini-boss
+  ctx.fillStyle = miniBoss.color;
+  ctx.fillRect(miniBoss.x, miniBoss.y, miniBoss.w, miniBoss.h);
+}
+
+// ================== TUNNEL ==================
+function updateTunnels() {
+  tunnels.forEach((t, i) => {
     t.x -= t.speed;
 
-    // Draw tunnel
-    ctx.fillStyle = "rgba(0, 255, 255, 0.3)";
-    ctx.fillRect(t.x, t.y, t.width, t.height);
+    // Draw tunnel walls
+    ctx.fillStyle = t.color;
+    ctx.fillRect(t.x, t.y, t.w, t.h);
 
-    // Detect entry
-    if (
-      player.x + player.size / 2 > t.x &&
-      player.x - player.size / 2 < t.x + t.width &&
-      player.y + player.size / 2 > t.y &&
-      player.y - player.size / 2 < t.y + t.height
-    ) {
-      t.entered = true;
+    // Check collision with player
+    if (rectsCollide(t, player)) {
+      player.hp--;
+      if (player.hp <= 0) gameOver = true;
     }
 
-    // If tunnel leaves screen
-    if (t.x + t.width < 0) {
-      if (!t.entered) {
-        player.health = 0; // player missed tunnel = game over
-      }
-      tunnels.splice(i, 1);
-    }
-  }
-}
-
-// ======== Enemy Logic ========
-function updateEnemies() {
-  enemies = enemies.filter(e => {
-    if (e.type === "boss") {
-      updateBoss(e);
-    } else if (e.type === "mini-boss") {
-      updateMiniBoss(e);
-    } else {
-      const dx = player.x - e.x;
-      const dy = player.y - e.y;
-      const dist = Math.hypot(dx, dy);
-      e.x += (dx / dist) * e.speed;
-      e.y += (dy / dist) * e.speed;
-
-      if (e.type === "triangle") {
-        e.shootTimer++;
-        if (e.shootTimer > 100) {
-          e.shootTimer = 0;
-          lightning.push({
-            x: e.x,
-            y: e.y,
-            dx: (dx / dist) * 5,
-            dy: (dy / dist) * 5,
-            size: 6,
-            damage: 15
-          });
-        }
-      }
-      if (dist < (player.size / 2 + e.size / 2)) {
-        player.health -= (e.type === "triangle" ? 25 : 15);
-        createExplosion(e.x, e.y, e.type === "triangle" ? "cyan" : "red");
-        return false;
-      }
-    }
-    return true;
-  });
-
-  if (minionsToAdd.length > 0) {
-    enemies.push(...minionsToAdd);
-    minionsToAdd = [];
-  }
-}
-
-function updateLightning() {
-  lightning = lightning.filter(l => {
-    l.x += l.dx;
-    l.y += l.dy;
-    if (Math.hypot(l.x - player.x, l.y - player.y) < player.size / 2) {
-      player.health -= l.damage;
-      return false;
-    }
-    return l.x >= 0 && l.x <= canvas.width && l.y >= 0 && l.y <= canvas.height;
+    // Remove when off-screen
+    if (t.x + t.w < 0) tunnels.splice(i, 1);
   });
 }
 
-function checkBulletCollisions() {
-  for (let bi = bullets.length - 1; bi >= 0; bi--) {
-    const b = bullets[bi];
-    for (let ei = enemies.length - 1; ei >= 0; ei--) {
-      const e = enemies[ei];
-      if (Math.hypot(b.x - e.x, b.y - e.y) < e.size / 2) {
-        e.health -= 10;
-        bullets.splice(bi, 1);
-        if (e.health <= 0) {
-          createExplosion(e.x, e.y,
-            e.type === "triangle" ? "cyan" :
-            e.type === "boss" ? "yellow" :
-            e.type === "mini-boss" ? "orange" : "red"
-          );
-          enemies.splice(ei, 1);
-          score += (e.type === "boss" ? 100 : e.type === "mini-boss" ? 50 : 10);
-        }
-        break;
-      }
-    }
-  }
-}
+// ================== DRAW ==================
+function draw() {
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-// ======== Explosions Update ========
-function updateExplosions() {
-  explosions = explosions.filter(ex => {
-    ctx.fillStyle = ex.color;
-    ctx.beginPath();
-    ctx.arc(ex.x, ex.y, ex.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ex.x += ex.dx;
-    ex.y += ex.dy;
-    ex.life--;
-    return ex.life > 0;
+  // Player
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+
+  // Bullets
+  bullets.forEach(b => {
+    ctx.fillStyle = b.color;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
   });
-}
 
-// ======== Drawing ========
-function drawPlayer() {
-  ctx.fillStyle = "lime";
-  ctx.fillRect(player.x - player.size / 2, player.y - player.size / 2, player.size, player.size);
-}
-
-function drawBullets() {
-  ctx.fillStyle = "yellow";
-  bullets.forEach(b => ctx.fillRect(b.x, b.y, b.size, b.size));
-}
-
-function drawEnemies() {
+  // Enemies
   enemies.forEach(e => {
-    if (e.type === "normal") {
-      ctx.fillStyle = "red";
-      ctx.fillRect(e.x - e.size / 2, e.y - e.size / 2, e.size, e.size);
-    } else if (e.type === "triangle") {
-      ctx.fillStyle = "cyan";
-      ctx.beginPath();
-      ctx.moveTo(e.x, e.y - e.size / 2);
-      ctx.lineTo(e.x - e.size / 2, e.y + e.size / 2);
-      ctx.lineTo(e.x + e.size / 2, e.y + e.size / 2);
-      ctx.closePath();
-      ctx.fill();
-    } else if (e.type === "boss") {
-      ctx.fillStyle = "yellow";
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.size / 2, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (e.type === "mini-boss") {
-      ctx.fillStyle = "orange";
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.size / 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    ctx.fillStyle = e.color;
+    ctx.fillRect(e.x, e.y, e.w, e.h);
   });
-}
 
-function drawLightning() {
-  ctx.fillStyle = "cyan";
-  lightning.forEach(l => ctx.fillRect(l.x, l.y, l.size, l.size));
-}
+  // Enemy bullets
+  enemyBullets.forEach(b => {
+    ctx.fillStyle = b.color;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+  });
 
-function drawUI() {
+  // HUD
   ctx.fillStyle = "white";
-  ctx.font = "20px Arial";
-  ctx.fillText(`Score: ${score}`, 20, 30);
-  ctx.fillText(`Health: ${player.health}`, 20, 60);
-  ctx.fillText(`Wave: ${wave}`, 20, 90);
-}
+  ctx.font = "16px Arial";
+  ctx.fillText("HP: " + player.hp, 10, 20);
+  ctx.fillText("Wave: " + wave, 10, 40);
+  ctx.fillText("Score: " + score, 10, 60);
 
-// ======== Waves ========
-const waves = [
-  { enemies: [{ type: "normal", count: 3 }] },                
-  { enemies: [{ type: "triangle", count: 2 }, { type: "normal", count: 3 }] }, 
-  { enemies: [{ type: "boss", count: 1 }] },                  
-  { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] }, 
-  { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] },
-  { tunnel: true } // 👈 Wave 6 spawns tunnel
-];
-
-function spawnWave(waveIndex) {
-  if (waveIndex >= waves.length) return;
-  const waveData = waves[waveIndex];
-  
-  if (waveData.tunnel) {
-    spawnTunnel(); // 👈 Spawns tunnel on wave 6
-    return;
-  }
-
-  waveData.enemies.forEach(group => {
-    if (group.type === "normal") spawnEnemies(group.count);
-    if (group.type === "triangle") spawnTriangleEnemies(group.count);
-    if (group.type === "boss") for(let i=0;i<group.count;i++) spawnBoss();
-    if (group.type === "mini-boss") for(let i=0;i<group.count;i++) spawnMiniBoss();
-  });
-}
-
-function nextWave() {
-  if (enemies.length === 0 && tunnels.length === 0) {
-    spawnWave(wave - 1);
-    wave++;
+  if (gameOver) {
+    ctx.fillStyle = "red";
+    ctx.font = "40px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 120, canvas.height / 2);
   }
 }
 
-// ======== Main Loop ========
-function gameLoop() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  movePlayer();
-  handleShooting();
-  updateBullets();
-  updateEnemies();
-  updateLightning();
-  checkBulletCollisions();
-  updateExplosions();
-  updateTunnels();
-  drawPlayer();
-  drawBullets();
-  drawEnemies();
-  drawLightning();
-  drawUI();
-  nextWave();
-
-  if (player.health > 0) {
-    requestAnimationFrame(gameLoop);
-  } else {
-    ctx.fillStyle = "white";
-    ctx.font = "50px Arial";
-    ctx.fillText("GAME OVER", canvas.width / 2 - 150, canvas.height / 2);
-    ctx.font = "30px Arial";
-    ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 100, canvas.height / 2 + 50);
+// ================== GAME LOOP ==================
+function loop() {
+  if (!gameOver) {
+    updatePlayer();
+    updateBullets();
+    updateEnemies();
+    updateMiniBoss();
+    updateTunnels();
+    spawnEnemies();
   }
+  draw();
+  requestAnimationFrame(loop);
 }
 
-// ======== Start Game ========
-spawnWave(wave - 1);
-gameLoop();
+loop();
