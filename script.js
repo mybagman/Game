@@ -444,46 +444,27 @@ function spawnWave(waveIndex) {
   if (waveIndex >= waves.length) return;
   const waveData = waves[waveIndex];
 
+  // Spawn tunnel if it exists
   let gap = null;
-
-  // spawn tunnel if needed
   if (waveData.tunnel) {
-    gap = spawnTunnel();
+    gap = spawnTunnel(); // spawn tunnel and get gap info
   }
 
-  // spawn enemies
+  // Spawn enemies (even if tunnel exists)
   if (waveData.enemies) {
     waveData.enemies.forEach(group => {
-      if (group.type === "normal") {
-        for (let i = 0; i < group.count; i++) {
-          let spawnY = gap ? gap.gapY + Math.random() * 100 - 50 : Math.random() * canvas.height / 2;
-          enemies.push({
-            x: gap ? gap.x + Math.random() * 50 : Math.random() * canvas.width,
-            y: spawnY,
-            size: 30,
-            speed: 2,
-            health: 30,
-            type: "normal",
-            shootTimer: 0
-          });
-        }
+      for (let i = 0; i < group.count; i++) {
+        let spawnY = gap ? gap.gapY + Math.random() * 100 - 50 : Math.random() * canvas.height / 2;
+        enemies.push({
+          x: gap ? gap.x + Math.random() * 50 : Math.random() * canvas.width,
+          y: spawnY,
+          size: 30,
+          speed: group.type === "triangle" ? 1.5 : 2,
+          health: group.type === "triangle" ? 40 : 30,
+          type: group.type,
+          shootTimer: 0
+        });
       }
-      if (group.type === "triangle") {
-        for (let i = 0; i < group.count; i++) {
-          let spawnY = gap ? gap.gapY + Math.random() * 100 - 50 : Math.random() * canvas.height / 2;
-          enemies.push({
-            x: gap ? gap.x + Math.random() * 50 : Math.random() * canvas.width,
-            y: spawnY,
-            size: 30,
-            speed: 1.5,
-            health: 40,
-            type: "triangle",
-            shootTimer: 0
-          });
-        }
-      }
-      if (group.type === "boss") for (let i = 0; i < group.count; i++) spawnBoss();
-      if (group.type === "mini-boss") for (let i = 0; i < group.count; i++) spawnMiniBoss();
     });
   }
 }
