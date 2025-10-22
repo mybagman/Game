@@ -20,6 +20,15 @@ function spawnTunnel() {
   const wallHeight = canvas.height / 3;
   const wallWidth = 300;
 
+  const topWall = { x: canvas.width, y: 0, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true };
+  const bottomWall = { x: canvas.width, y: canvas.height - wallHeight, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true };
+
+  tunnels.push(topWall, bottomWall);
+
+  // Return the gap position (middle of screen vertically)
+  return { x: canvas.width, y: wallHeight, width: wallWidth, gapY: wallHeight };
+}
+
   tunnels.push(
     // top wall
     { x: canvas.width, y: 0, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true },
@@ -428,17 +437,56 @@ const waves = [
   { enemies: [{ type: "boss", count: 1 }] },
   { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] },
   { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] },
-  { tunnel: true } // tunnel wave
+  { tunnel: true, enemies: [{ type: "normal", count: 4 }, { type: "triangle", count: 2 }] } // wave 6
 ];
 
 function spawnWave(waveIndex) {
   if (waveIndex >= waves.length) return;
   const waveData = waves[waveIndex];
 
+  let gap = null;
+
+  // spawn tunnel if needed
   if (waveData.tunnel) {
-    spawnTunnel(); // spawn tunnel
-    return;
+    gap = spawnTunnel();
   }
+
+  // spawn enemies
+  if (waveData.enemies) {
+    waveData.enemies.forEach(group => {
+      if (group.type === "normal") {
+        for (let i = 0; i < group.count; i++) {
+          let spawnY = gap ? gap.gapY + Math.random() * 100 - 50 : Math.random() * canvas.height / 2;
+          enemies.push({
+            x: gap ? gap.x + Math.random() * 50 : Math.random() * canvas.width,
+            y: spawnY,
+            size: 30,
+            speed: 2,
+            health: 30,
+            type: "normal",
+            shootTimer: 0
+          });
+        }
+      }
+      if (group.type === "triangle") {
+        for (let i = 0; i < group.count; i++) {
+          let spawnY = gap ? gap.gapY + Math.random() * 100 - 50 : Math.random() * canvas.height / 2;
+          enemies.push({
+            x: gap ? gap.x + Math.random() * 50 : Math.random() * canvas.width,
+            y: spawnY,
+            size: 30,
+            speed: 1.5,
+            health: 40,
+            type: "triangle",
+            shootTimer: 0
+          });
+        }
+      }
+      if (group.type === "boss") for (let i = 0; i < group.count; i++) spawnBoss();
+      if (group.type === "mini-boss") for (let i = 0; i < group.count; i++) spawnMiniBoss();
+    });
+  }
+}
 
   waveData.enemies.forEach(group => {
     if (group.type === "normal") spawnEnemies(group.count);
