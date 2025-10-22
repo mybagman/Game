@@ -81,8 +81,8 @@ function spawnBoss() {
   enemies.push({
     x: canvas.width / 2,
     y: 100,
-    size: 120, // bigger size
-    health: 600 + wave * 200, // stronger
+    size: 150,        // BIGGER SIZE visually
+    health: 1000,     // MUCH STRONGER
     type: "boss"
   });
 }
@@ -91,8 +91,8 @@ function spawnMiniBoss() {
   enemies.push({
     x: canvas.width / 2,
     y: 120,
-    size: 60, // bigger size
-    health: 300 + wave * 100, // stronger
+    size: 80,         // BIGGER SIZE visually
+    health: 500,      // STRONGER
     type: "mini-boss"
   });
 }
