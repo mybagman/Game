@@ -81,8 +81,8 @@ function spawnBoss() {
   enemies.push({
     x: canvas.width / 2,
     y: 100,
-    size: 80,
-    health: 300 + wave * 100,
+    size: 120, // bigger size
+    health: 600 + wave * 200, // stronger
     type: "boss"
   });
 }
@@ -91,8 +91,8 @@ function spawnMiniBoss() {
   enemies.push({
     x: canvas.width / 2,
     y: 120,
-    size: 40,
-    health: 150 + wave * 50,
+    size: 60, // bigger size
+    health: 300 + wave * 100, // stronger
     type: "mini-boss"
   });
 }
@@ -428,7 +428,8 @@ const waves = [
   { enemies: [{ type: "boss", count: 1 }] },
   { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] },
   { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] },
-  { tunnel: true, enemies: [{ type: "normal", count: 4 }, { type: "triangle", count: 2 }] } // wave 6
+  { tunnel: true, enemies: [{ type: "normal", count: 4 }, { type: "triangle", count: 2 }] },
+  { enemies: [{ type: "boss", count: 1 }] } // new wave 7
 ];
 
 function spawnWave(waveIndex) {
