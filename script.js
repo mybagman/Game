@@ -215,10 +215,34 @@ function createExplosion(x, y, color = "red") {
 
 // ======== Movement ========
 function movePlayer() {
-  if (keys["w"] || keys["arrowup"]) { player.y -= player.speed; lastDir = { x: 0, y: -1 }; }
-  if (keys["s"] || keys["arrowdown"]) { player.y += player.speed; lastDir = { x: 0, y: 1 }; }
-  if (keys["a"] || keys["arrowleft"]) { player.x -= player.speed; lastDir = { x: -1, y: 0 }; }
-  if (keys["d"] || keys["arrowright"]) { player.x += player.speed; lastDir = { x: 1, y: 0 }; }
+  let newX = player.x;
+  let newY = player.y;
+
+  if (keys["w"] || keys["arrowup"]) { newY -= player.speed; lastDir = { x: 0, y: -1 }; }
+  if (keys["s"] || keys["arrowdown"]) { newY += player.speed; lastDir = { x: 0, y: 1 }; }
+  if (keys["a"] || keys["arrowleft"]) { newX -= player.speed; lastDir = { x: -1, y: 0 }; }
+  if (keys["d"] || keys["arrowright"]) { newX += player.speed; lastDir = { x: 1, y: 0 }; }
+
+  // Check tunnel collisions
+  let blocked = false;
+  for (const t of tunnels) {
+    if (
+      newX + player.size / 2 > t.x &&
+      newX - player.size / 2 < t.x + t.width &&
+      newY + player.size / 2 > t.y &&
+      newY - player.size / 2 < t.y + t.height
+    ) {
+      blocked = true;
+      player.health -= 1; // touch tunnel = damage
+      createExplosion(player.x, player.y, "cyan");
+      break;
+    }
+  }
+
+  if (!blocked) {
+    player.x = newX;
+    player.y = newY;
+  }
 }
 
 function handleShooting() {
@@ -243,25 +267,11 @@ function updateTunnels() {
     const t = tunnels[i];
     if (!t.active) continue;
 
-    // Move from right to left
-    t.x -= t.speed;
+    t.x -= t.speed; // move wall
 
-    // Draw tunnel wall
     ctx.fillStyle = "rgba(0, 255, 255, 0.5)";
     ctx.fillRect(t.x, t.y, t.width, t.height);
 
-    // Damage if player touches wall
-    if (
-      player.x + player.size / 2 > t.x &&
-      player.x - player.size / 2 < t.x + t.width &&
-      player.y + player.size / 2 > t.y &&
-      player.y - player.size / 2 < t.y + t.height
-    ) {
-      player.health -= 1; // slow damage tick
-      createExplosion(player.x, player.y, "cyan");
-    }
-
-    // Remove tunnel if off screen
     if (t.x + t.width < 0) {
       tunnels.splice(i, 1);
     }
@@ -304,30 +314,6 @@ function updateEnemies() {
     }
     return true;
   });
-
-    // Draw tunnel
-    ctx.fillStyle = "rgba(0, 255, 255, 0.3)";
-    ctx.fillRect(t.x, t.y, t.width, t.height);
-
-    // Check if player entered tunnel
-    if (
-      player.x + player.size / 2 > t.x &&
-      player.x - player.size / 2 < t.x + t.width &&
-      player.y + player.size / 2 > t.y &&
-      player.y - player.size / 2 < t.y + t.height
-    ) {
-      t.entered = true;
-    }
-
-    // If tunnel leaves screen (missed)
-    if (t.x + t.width < 0) {
-      if (!t.entered) {
-        player.health = 0; // player missed tunnel = game over
-      }
-      tunnels.splice(i, 1);
-    }
-  }
-}
 
   if (minionsToAdd.length > 0) {
     enemies.push(...minionsToAdd);
@@ -442,36 +428,27 @@ const waves = [
   { enemies: [{ type: "boss", count: 1 }] },
   { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] },
   { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] },
-  { tunnel: true } // 👈 wave 6 spawns tunnel
+  { tunnel: true } // tunnel wave
 ];
 
 function spawnWave(waveIndex) {
-  if (waveIndex >= waves.length) return; // No more waves
   if (waveIndex >= waves.length) return;
   const waveData = waves[waveIndex];
 
   if (waveData.tunnel) {
-    spawnTunnel(); // 👈 Spawns tunnel on wave 6
+    spawnTunnel(); // spawn tunnel
     return;
   }
 
   waveData.enemies.forEach(group => {
     if (group.type === "normal") spawnEnemies(group.count);
     if (group.type === "triangle") spawnTriangleEnemies(group.count);
-    if (group.type === "boss") for(let i=0;i<group.count;i++) spawnBoss();
-    if (group.type === "mini-boss") for(let i=0;i<group.count;i++) spawnMiniBoss();
+    if (group.type === "boss") for (let i = 0; i < group.count; i++) spawnBoss();
+    if (group.type === "mini-boss") for (let i = 0; i < group.count; i++) spawnMiniBoss();
   });
 }
 
-// Spawn tunnel only on Wave 1
-if (waveIndex === 5) { // (0-based index, so wave 6)
-  spawnTunnel();
-}
-
 function nextWave() {
-  if (enemies.length === 0) {
-    spawnWave(wave); // spawn current wave
-    wave++;          // increment for next wave
   if (enemies.length === 0 && tunnels.length === 0) {
     spawnWave(wave - 1);
     wave++;
@@ -507,15 +484,6 @@ function gameLoop() {
   }
 }
 
-if (tunnels.length > 0) {
-  const t = tunnels[0];
-  if (!t.entered && t.x < player.x - player.size) {
-    player.health = 0; // hit the wall, didn’t enter tunnel
-  }
-}
-
 // ======== Start Game ========
-spawnWave(wave); // start the first wave
-gameLoop();
-spawnWave(wave - 1);
+spawnWave(wave - 1); // first wave
 gameLoop();
