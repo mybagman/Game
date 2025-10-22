@@ -14,6 +14,19 @@ let explosions = [];
 let score = 0;
 let wave = 1;
 let minionsToAdd = [];
+let tunnels = [];
+
+function spawnTunnel() {
+  tunnels.push({
+    x: canvas.width,
+    y: canvas.height / 3,
+    width: 200,
+    height: canvas.height / 3,
+    speed: 2,
+    active: true,
+    entered: false
+  });
+}
 
 let lastDir = { x: 1, y: 0 };
 let canShoot = true;
@@ -260,6 +273,38 @@ function updateEnemies() {
     }
     return true;
   });
+  
+  function updateTunnels() {
+  for (let i = tunnels.length - 1; i >= 0; i--) {
+    const t = tunnels[i];
+    if (!t.active) continue;
+    
+    // Move tunnel from right to left
+    t.x -= t.speed;
+
+    // Draw tunnel
+    ctx.fillStyle = "rgba(0, 255, 255, 0.3)";
+    ctx.fillRect(t.x, t.y, t.width, t.height);
+
+    // Check if player entered tunnel
+    if (
+      player.x + player.size / 2 > t.x &&
+      player.x - player.size / 2 < t.x + t.width &&
+      player.y + player.size / 2 > t.y &&
+      player.y - player.size / 2 < t.y + t.height
+    ) {
+      t.entered = true;
+    }
+
+    // If tunnel leaves screen (missed)
+    if (t.x + t.width < 0) {
+      if (!t.entered) {
+        player.health = 0; // player missed tunnel = game over
+      }
+      tunnels.splice(i, 1);
+    }
+  }
+}
 
   if (minionsToAdd.length > 0) {
     enemies.push(...minionsToAdd);
@@ -388,6 +433,11 @@ function spawnWave(waveIndex) {
   });
 }
 
+// Spawn tunnel only on Wave 6
+if (waveIndex === 5) { // (0-based index, so wave 6)
+  spawnTunnel();
+}
+
 function nextWave() {
   if (enemies.length === 0) {
     spawnWave(wave); // spawn current wave
@@ -405,6 +455,7 @@ function gameLoop() {
   updateLightning();
   checkBulletCollisions();
   updateExplosions();
+  updateTunnels();
   drawPlayer();
   drawBullets();
   drawEnemies();
@@ -420,6 +471,13 @@ function gameLoop() {
     ctx.fillText("GAME OVER", canvas.width / 2 - 150, canvas.height / 2);
     ctx.font = "30px Arial";
     ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 100, canvas.height / 2 + 50);
+  }
+}
+
+if (tunnels.length > 0) {
+  const t = tunnels[0];
+  if (!t.entered && t.x < player.x - player.size) {
+    player.health = 0; // hit the wall, didn’t enter tunnel
   }
 }
 
