@@ -14,7 +14,7 @@ let enemies = [];
 let enemyBullets = [];
 let wave = 1;
 let score = 0;
-let tunnels = []; // now can hold multiple tunnel walls
+let tunnel = null;      // now can hold multiple walls
 let miniBoss = null;
 let gameOver = false;
 
@@ -32,7 +32,6 @@ function updatePlayer() {
   player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
   player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
 
-  // One bullet per press
   if (keys["Space"] && !player.shooting) {
     bullets.push({ x: player.x + player.w, y: player.y + player.h / 2 - 2, w: 8, h: 4, color: "white", speed: 8 });
     player.shooting = true;
@@ -60,30 +59,15 @@ function updateBullets() {
 
 // ================== ENEMIES ==================
 function spawnEnemies() {
-  if (enemies.length === 0 && tunnels.length === 0 && !miniBoss) {
+  if (enemies.length === 0 && !miniBoss) {
     wave++;
-
     if (wave === 6) {
-      // Create top and bottom tunnel walls
-      const tunnelSpeed = 3;
-      const wallHeight = canvas.height / 3;
-
-      tunnels.push(
-        { x: canvas.width, y: 0, w: 200, h: wallHeight, color: "purple", speed: tunnelSpeed },
-        { x: canvas.width, y: canvas.height - wallHeight, w: 200, h: wallHeight, color: "purple", speed: tunnelSpeed }
-      );
-
-      // Mini-boss that stays on right side
-      miniBoss = {
-        x: canvas.width - 100,
-        y: canvas.height / 2 - 40,
-        w: 80,
-        h: 80,
-        color: "yellow",
-        hp: 15,
-        fireRate: 60,
-        fireTimer: 0
-      };
+      // Spawn tunnel walls and mini-boss
+      tunnel = [
+        { x: canvas.width, y: 0, w: 200, h: 150, color: "purple", speed: 3 }, // top wall
+        { x: canvas.width, y: 450, w: 200, h: 150, color: "purple", speed: 3 } // bottom wall
+      ];
+      miniBoss = { x: canvas.width - 100, y: canvas.height / 2 - 40, w: 80, h: 80, color: "yellow", hp: 10, fireRate: 60, fireTimer: 0 };
       return;
     }
 
@@ -92,8 +76,7 @@ function spawnEnemies() {
       enemies.push({
         x: canvas.width + Math.random() * 200,
         y: Math.random() * (canvas.height - 40),
-        w: 30,
-        h: 30,
+        w: 30, h: 30,
         color: wave % 2 === 0 ? "orange" : "red",
         speed: 2
       });
@@ -133,7 +116,6 @@ function updateMiniBoss() {
   miniBoss.fireTimer++;
   if (miniBoss.fireTimer >= miniBoss.fireRate) {
     miniBoss.fireTimer = 0;
-    // Triple shot
     enemyBullets.push({ x: miniBoss.x, y: miniBoss.y + miniBoss.h / 2 - 4, w: 8, h: 8, color: "red", speed: 5 });
     enemyBullets.push({ x: miniBoss.x, y: miniBoss.y + miniBoss.h / 2 - 20, w: 8, h: 8, color: "red", speed: 5 });
     enemyBullets.push({ x: miniBoss.x, y: miniBoss.y + miniBoss.h / 2 + 12, w: 8, h: 8, color: "red", speed: 5 });
@@ -146,8 +128,8 @@ function updateMiniBoss() {
       miniBoss.hp--;
       if (miniBoss.hp <= 0) {
         miniBoss = null;
-        tunnels = []; // clear tunnels once mini-boss dies
-        score += 200;
+        tunnel = null;  // tunnel disappears when mini-boss is defeated
+        score += 100;
       }
     }
   });
@@ -158,22 +140,22 @@ function updateMiniBoss() {
 }
 
 // ================== TUNNEL ==================
-function updateTunnels() {
-  tunnels.forEach((t, i) => {
-    t.x -= t.speed;
+function updateTunnel() {
+  if (!tunnel) return;
 
-    // Draw tunnel walls
+  tunnel.forEach(t => {
+    // Move walls only if mini-boss exists
+    if (miniBoss) t.x -= t.speed;
+
+    // Draw each wall
     ctx.fillStyle = t.color;
     ctx.fillRect(t.x, t.y, t.w, t.h);
 
-    // Check collision with player
-    if (rectsCollide(t, player)) {
-      player.hp--;
-      if (player.hp <= 0) gameOver = true;
+    // Damage if player touches wall
+    if (rectsCollide(player, t)) {
+      player.hp = 0;
+      gameOver = true;
     }
-
-    // Remove when off-screen
-    if (t.x + t.w < 0) tunnels.splice(i, 1);
   });
 }
 
@@ -225,7 +207,7 @@ function loop() {
     updateBullets();
     updateEnemies();
     updateMiniBoss();
-    updateTunnels();
+    updateTunnel();
     spawnEnemies();
   }
   draw();
