@@ -14,7 +14,7 @@ let enemies = [];
 let enemyBullets = [];
 let wave = 1;
 let score = 0;
-let tunnel = null;      // now can hold multiple walls
+let tunnelWalls = []; // top and bottom walls
 let miniBoss = null;
 let gameOver = false;
 
@@ -59,14 +59,15 @@ function updateBullets() {
 
 // ================== ENEMIES ==================
 function spawnEnemies() {
-  if (enemies.length === 0 && !miniBoss) {
+  // Spawn new wave if no enemies, no miniBoss, no tunnel walls
+  if (enemies.length === 0 && !miniBoss && tunnelWalls.length === 0) {
     wave++;
     if (wave === 6) {
-      // Spawn tunnel walls and mini-boss
-      tunnel = [
-        { x: canvas.width, y: 0, w: 200, h: 150, color: "purple", speed: 3 }, // top wall
-        { x: canvas.width, y: 450, w: 200, h: 150, color: "purple", speed: 3 } // bottom wall
-      ];
+      // Wave 6: spawn tunnel walls and miniBoss
+      const wallHeight = canvas.height / 3;
+      tunnelWalls.push({ x: canvas.width, y: 0, w: 200, h: wallHeight, color: "purple", speed: 3 }); // top wall
+      tunnelWalls.push({ x: canvas.width, y: canvas.height - wallHeight, w: 200, h: wallHeight, color: "purple", speed: 3 }); // bottom wall
+
       miniBoss = { x: canvas.width - 100, y: canvas.height / 2 - 40, w: 80, h: 80, color: "yellow", hp: 10, fireRate: 60, fireTimer: 0 };
       return;
     }
@@ -128,7 +129,6 @@ function updateMiniBoss() {
       miniBoss.hp--;
       if (miniBoss.hp <= 0) {
         miniBoss = null;
-        tunnel = null;  // tunnel disappears when mini-boss is defeated
         score += 100;
       }
     }
@@ -139,22 +139,26 @@ function updateMiniBoss() {
   ctx.fillRect(miniBoss.x, miniBoss.y, miniBoss.w, miniBoss.h);
 }
 
-// ================== TUNNEL ==================
-function updateTunnel() {
-  if (!tunnel) return;
+// ================== TUNNEL WALLS ==================
+function updateTunnelWalls() {
+  if (tunnelWalls.length === 0) return;
 
-  tunnel.forEach(t => {
-    // Move walls only if mini-boss exists
-    if (miniBoss) t.x -= t.speed;
+  tunnelWalls.forEach((wall, i) => {
+    wall.x -= wall.speed;
 
-    // Draw each wall
-    ctx.fillStyle = t.color;
-    ctx.fillRect(t.x, t.y, t.w, t.h);
+    // Draw wall
+    ctx.fillStyle = wall.color;
+    ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
 
-    // Damage if player touches wall
-    if (rectsCollide(player, t)) {
+    // Damage player if touching wall
+    if (rectsCollide(player, wall)) {
       player.hp = 0;
       gameOver = true;
+    }
+
+    // Remove wall if offscreen
+    if (wall.x + wall.w < 0) {
+      tunnelWalls.splice(i, 1);
     }
   });
 }
@@ -186,6 +190,18 @@ function draw() {
     ctx.fillRect(b.x, b.y, b.w, b.h);
   });
 
+  // Tunnel walls
+  tunnelWalls.forEach(w => {
+    ctx.fillStyle = w.color;
+    ctx.fillRect(w.x, w.y, w.w, w.h);
+  });
+
+  // Mini-boss
+  if (miniBoss) {
+    ctx.fillStyle = miniBoss.color;
+    ctx.fillRect(miniBoss.x, miniBoss.y, miniBoss.w, miniBoss.h);
+  }
+
   // HUD
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
@@ -207,7 +223,7 @@ function loop() {
     updateBullets();
     updateEnemies();
     updateMiniBoss();
-    updateTunnel();
+    updateTunnelWalls();
     spawnEnemies();
   }
   draw();
