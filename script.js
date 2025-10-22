@@ -17,15 +17,15 @@ let minionsToAdd = [];
 let tunnels = [];
 
 function spawnTunnel() {
-  tunnels.push({
-    x: canvas.width,
-    y: canvas.height / 3,
-    width: 200,
-    height: canvas.height / 3,
-    speed: 2,
-    active: true,
-    entered: false
-  });
+  const wallHeight = canvas.height / 3;
+  const wallWidth = 300;
+
+  tunnels.push(
+    // top wall
+    { x: canvas.width, y: 0, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true },
+    // bottom wall
+    { x: canvas.width, y: canvas.height - wallHeight, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true }
+  );
 }
 
 let lastDir = { x: 1, y: 0 };
@@ -243,28 +243,26 @@ function updateTunnels() {
     const t = tunnels[i];
     if (!t.active) continue;
 
-    // Move tunnel left
+    // Move from right to left
     t.x -= t.speed;
 
-    // Draw tunnel
-    ctx.fillStyle = "rgba(0, 255, 255, 0.3)";
+    // Draw tunnel wall
+    ctx.fillStyle = "rgba(0, 255, 255, 0.5)";
     ctx.fillRect(t.x, t.y, t.width, t.height);
 
-    // Detect entry
+    // Damage if player touches wall
     if (
       player.x + player.size / 2 > t.x &&
       player.x - player.size / 2 < t.x + t.width &&
       player.y + player.size / 2 > t.y &&
       player.y - player.size / 2 < t.y + t.height
     ) {
-      t.entered = true;
+      player.health -= 1; // slow damage tick
+      createExplosion(player.x, player.y, "cyan");
     }
 
-    // If tunnel leaves screen
+    // Remove tunnel if off screen
     if (t.x + t.width < 0) {
-      if (!t.entered) {
-        player.health = 0; // player missed tunnel = game over
-      }
       tunnels.splice(i, 1);
     }
   }
@@ -306,14 +304,6 @@ function updateEnemies() {
     }
     return true;
   });
-  
-  function updateTunnels() {
-  for (let i = tunnels.length - 1; i >= 0; i--) {
-    const t = tunnels[i];
-    if (!t.active) continue;
-    
-    // Move tunnel from right to left
-    t.x -= t.speed;
 
     // Draw tunnel
     ctx.fillStyle = "rgba(0, 255, 255, 0.3)";
@@ -447,13 +437,12 @@ function drawUI() {
 
 // ======== Waves ========
 const waves = [
-  { enemies: [{ type: "normal", count: 3 }] },                
-  { enemies: [{ type: "triangle", count: 2 }, { type: "normal", count: 3 }] }, 
-  { enemies: [{ type: "boss", count: 1 }] },                  
-  { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] }, 
-  { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] } 
+  { enemies: [{ type: "normal", count: 3 }] },
+  { enemies: [{ type: "triangle", count: 2 }, { type: "normal", count: 3 }] },
+  { enemies: [{ type: "boss", count: 1 }] },
+  { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] },
   { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] },
-  { tunnel: true } // 👈 Wave 6 spawns tunnel
+  { tunnel: true } // 👈 wave 6 spawns tunnel
 ];
 
 function spawnWave(waveIndex) {
