@@ -127,7 +127,7 @@ function spawnReflector(x, y) {
 }
 
 // ======== Diamond Enemy ========
-function spawnDiamondEnemy(x = canvas.width - 100, y = canvas.height / 2) {
+function spawnDiamondEnemy(x = canvas.width / 2, y = canvas.height / 2) {
   console.log("Diamond spawned at", x, y);
   enemies.push({
     x,
@@ -137,7 +137,8 @@ function spawnDiamondEnemy(x = canvas.width - 100, y = canvas.height / 2) {
     type: "diamond",
     attachments: [],
     canReflect: false,
-    speed: 1
+    speed: 0, // orbit only
+    angle: 0
   });
 }
 
@@ -283,9 +284,18 @@ function updateEnemies() {
       e.angle += 0.1;
     }
     else if (e.type==="diamond") {
+      // Orbit center
+      e.angle += 0.02;
+      const radius = 200;
+      const cx = canvas.width/2;
+      const cy = canvas.height/2;
+      e.x = cx + Math.cos(e.angle)*radius;
+      e.y = cy + Math.sin(e.angle)*radius;
+
+      // Attract enemies
       attractEnemiesToDiamond(e, enemies);
-      e.x -= e.speed;
-      if (e.x + e.size < 0) return false;
+
+      // Update attachments positions
       const points = [
         {x:e.x, y:e.y-e.size/2},
         {x:e.x+e.size/2, y:e.y},
@@ -293,6 +303,33 @@ function updateEnemies() {
         {x:e.x-e.size/2, y:e.y}
       ];
       e.attachments.forEach((a,i)=>{a.x=points[i].x; a.y=points[i].y});
+
+      // Diamond abilities
+      e.shootTimer = e.shootTimer || 0;
+      e.shootTimer++;
+
+      if (e.canReflect && e.shootTimer % 100 === 0) {
+        lightning.push({ x:e.x, y:e.y, dx:0, dy:-5, size:6, damage:20 });
+        lightning.push({ x:e.x, y:e.y, dx:0, dy:5, size:6, damage:20 });
+        lightning.push({ x:e.x, y:e.y, dx:-5, dy:0, size:6, damage:20 });
+        lightning.push({ x:e.x, y:e.y, dx:5, dy:0, size:6, damage:20 });
+      }
+
+      if (e.attachments.some(a=>a.spawnMini) && e.shootTimer % 200 === 0) {
+        minionsToAdd.push({
+          x: e.x + (Math.random()-0.5)*80,
+          y: e.y + (Math.random()-0.5)*80,
+          size: 25,
+          speed: 2,
+          health: 30,
+          type: "normal",
+          shootTimer: 0
+        });
+      }
+
+      if (e.attachments.some(a=>a.fireRateBoost) && e.shootTimer % 80 === 0) {
+        lightning.push({ x:e.x, y:e.y, dx:0, dy:-6, size:6, damage:15 });
+      }
     }
 
     const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
@@ -512,9 +549,10 @@ function gameLoop(){
   drawLightning();
   drawUI();
 
-  // Check wave completion
+  // Check wave completion (wait for all non-diamond enemies and diamond dead)
   const aliveDiamonds = enemies.filter(e=>e.type==="diamond").length;
-  if(enemies.length===aliveDiamonds || enemies.length===0){wave++; startWave();}
+  const nonDiamondEnemies = enemies.filter(e=>e.type!=="diamond").length;
+  if(aliveDiamonds===0 && nonDiamondEnemies===0){wave++; startWave();}
 
   if(player.health<=0){
     ctx.fillStyle="red";
