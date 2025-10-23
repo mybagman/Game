@@ -128,17 +128,17 @@ function spawnReflector(x, y) {
 
 // ======== Diamond Enemy ========
 function spawnDiamondEnemy(x = canvas.width / 2, y = canvas.height / 2) {
-  console.log("Diamond spawned at", x, y);
   enemies.push({
-    x,
-    y,
+    x, y,
     size: 40,
     health: 200,
     type: "diamond",
     attachments: [],
     canReflect: false,
-    speed: 0, // orbit only
-    angle: 0
+    speed: 0,
+    angle: 0,
+    shootTimer: 0,
+    pulse: 0
   });
 }
 
@@ -163,6 +163,21 @@ function attachToDiamond(diamond, enemy) {
   if (enemy.type === "triangle") enemy.fireRateBoost = true;
   else if (enemy.type === "red-square") enemy.spawnMini = true;
   else if (enemy.type === "reflector") diamond.canReflect = true;
+}
+
+function diamondDeath(e) {
+  createExplosion(e.x, e.y, "white");
+  e.attachments.forEach(a => {
+    enemies.push({
+      x: a.x,
+      y: a.y,
+      size: 20,
+      health: 20,
+      speed: 2,
+      type: ["normal","triangle","reflector"][Math.floor(Math.random()*3)],
+      shootTimer:0
+    });
+  });
 }
 
 // ======== Tunnel Logic ========
@@ -295,24 +310,31 @@ function updateEnemies() {
       // Attract enemies
       attractEnemiesToDiamond(e, enemies);
 
-      // Update attachments positions
-      const points = [
-        {x:e.x, y:e.y-e.size/2},
-        {x:e.x+e.size/2, y:e.y},
-        {x:e.x, y:e.y+e.size/2},
-        {x:e.x-e.size/2, y:e.y}
-      ];
-      e.attachments.forEach((a,i)=>{a.x=points[i].x; a.y=points[i].y});
+      // Update attachments orbit dynamically
+      e.attachments.forEach((a,i)=>{
+        a.orbitAngle = (a.orbitAngle || Math.random()*Math.PI*2) + 0.05;
+        const orbitRadius = e.size + 20;
+        a.x = e.x + Math.cos(a.orbitAngle) * orbitRadius;
+        a.y = e.y + Math.sin(a.orbitAngle) * orbitRadius;
+      });
+
+      // Pulse effect for visual feedback
+      e.pulse = Math.sin(e.shootTimer * 0.1) * 5;
 
       // Diamond abilities
-      e.shootTimer = e.shootTimer || 0;
       e.shootTimer++;
 
-      if (e.canReflect && e.shootTimer % 100 === 0) {
-        lightning.push({ x:e.x, y:e.y, dx:0, dy:-5, size:6, damage:20 });
-        lightning.push({ x:e.x, y:e.y, dx:0, dy:5, size:6, damage:20 });
-        lightning.push({ x:e.x, y:e.y, dx:-5, dy:0, size:6, damage:20 });
-        lightning.push({ x:e.x, y:e.y, dx:5, dy:0, size:6, damage:20 });
+      if (e.canReflect) {
+        bullets.forEach((b) => {
+          const dx = b.x - e.x;
+          const dy = b.y - e.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 100) { b.dx*=-1; b.dy*=-1; }
+        });
+      }
+
+      if (e.attachments.some(a=>a.fireRateBoost) && e.shootTimer % 80 === 0) {
+        lightning.push({ x:e.x, y:e.y, dx:0, dy:-6, size:6, damage:15 });
       }
 
       if (e.attachments.some(a=>a.spawnMini) && e.shootTimer % 200 === 0) {
@@ -326,10 +348,6 @@ function updateEnemies() {
           shootTimer: 0
         });
       }
-
-      if (e.attachments.some(a=>a.fireRateBoost) && e.shootTimer % 80 === 0) {
-        lightning.push({ x:e.x, y:e.y, dx:0, dy:-6, size:6, damage:15 });
-      }
     }
 
     const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
@@ -341,10 +359,7 @@ function updateEnemies() {
     return true;
   });
 
-  if (minionsToAdd.length>0) {
-    enemies.push(...minionsToAdd);
-    minionsToAdd=[];
-  }
+  if (minionsToAdd.length>0) { enemies.push(...minionsToAdd); minionsToAdd=[]; }
 }
 
 // ======== Lightning ========
@@ -364,64 +379,48 @@ function updateLightning() {
 function checkBulletCollisions() {
   for (let bi = bullets.length - 1; bi >= 0; bi--) {
     const b = bullets[bi];
-
     for (let ei = enemies.length - 1; ei >= 0; ei--) {
       const e = enemies[ei];
       let hit = false;
 
-      // Reflector collision
-      if (e.type === "reflector") {
-        const radius = Math.max(e.width, e.height) / 2;
-        const dx = b.x - e.x;
-        const dy = b.y - e.y;
-        if (Math.hypot(dx, dy) < radius) hit = true;
-      } 
-      // Normal collision
-      else {
-        const radius = e.size / 2 || 20;
-        const dx = b.x - e.x;
-        const dy = b.y - e.y;
-        if (Math.hypot(dx, dy) < radius) hit = true;
+      if(e.type==="reflector"){
+        const radius = Math.max(e.width,e.height)/2;
+        if(Math.hypot(b.x-e.x,b.y-e.y)<radius) hit=true;
+      } else {
+        const radius = e.size/2||20;
+        if(Math.hypot(b.x-e.x,b.y-e.y)<radius) hit=true;
       }
 
-      if (hit) {
-        e.health -= 10;
-        bullets.splice(bi, 1);
-
-        if (e.health <= 0) {
-          createExplosion(e.x, e.y,
-            e.type === "triangle" ? "cyan" :
-            e.type === "boss" ? "yellow" :
-            e.type === "mini-boss" ? "orange" :
-            e.type === "diamond" ? "white" : "red"
+      if(hit){
+        e.health-=10;
+        bullets.splice(bi,1);
+        if(e.health<=0){
+          createExplosion(e.x,e.y,
+            e.type==="triangle"?"cyan":
+            e.type==="boss"?"yellow":
+            e.type==="mini-boss"?"orange":
+            e.type==="diamond"?"white":"red"
           );
-          enemies.splice(ei, 1);
-          score += (e.type === "boss" ? 100 :
-                    e.type === "mini-boss" ? 50 :
-                    10);
+          if(e.type==="diamond") diamondDeath(e);
+          enemies.splice(ei,1);
+          score += (e.type==="boss"?100:(e.type==="mini-boss"?50:10));
         }
-
-        break; // stop checking other enemies for this bullet
+        break;
       }
 
-      // ==== Diamond attachments collision ====
-      if (e.type === "diamond" && e.attachments.length > 0) {
-        for (let ai = e.attachments.length - 1; ai >= 0; ai--) {
-          const a = e.attachments[ai];
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const radius = a.size / 2 || 15;
-
-          if (Math.hypot(dx, dy) < radius) {
-            a.health = (a.health || 30) - 10;
-            bullets.splice(bi, 1);
-
-            if (a.health <= 0) {
-              createExplosion(a.x, a.y, "white");
-              e.attachments.splice(ai, 1);
-              score += 5; // attachments give smaller score
+      // Diamond attachments
+      if(e.type==="diamond" && e.attachments.length>0){
+        for(let ai=e.attachments.length-1;ai>=0;ai--){
+          const a=e.attachments[ai];
+          const radius=a.size/2||15;
+          if(Math.hypot(b.x-a.x,b.y-a.y)<radius){
+            a.health=(a.health||30)-10;
+            bullets.splice(bi,1);
+            if(a.health<=0){
+              createExplosion(a.x,a.y,"white");
+              e.attachments.splice(ai,1);
+              score+=5;
             }
-
             break;
           }
         }
@@ -432,7 +431,7 @@ function checkBulletCollisions() {
 
 // ======== Explosions ========
 function createExplosion(x,y,color="red"){
-  for (let i=0;i<20;i++){
+  for(let i=0;i<20;i++){
     explosions.push({x,y,dx:(Math.random()-0.5)*6,dy:(Math.random()-0.5)*6,radius:Math.random()*4+2,color,life:30});
   }
 }
@@ -481,8 +480,10 @@ function drawBullets(){ctx.fillStyle="yellow"; bullets.forEach(b=>ctx.fillRect(b
 
 function drawEnemies(){
   enemies.forEach(e=>{
-    if(e.type==="normal"){ctx.fillStyle="red"; ctx.fillRect(e.x-e.size/2,e.y-e.size/2,e.size,e.size);}
-    else if(e.type==="triangle"){
+        if(e.type==="normal"){
+      ctx.fillStyle="red";
+      ctx.fillRect(e.x-e.size/2,e.y-e.size/2,e.size,e.size);
+    } else if(e.type==="triangle"){
       ctx.fillStyle="cyan";
       ctx.beginPath();
       ctx.moveTo(e.x,e.y-e.size/2);
@@ -490,18 +491,56 @@ function drawEnemies(){
       ctx.lineTo(e.x+e.size/2,e.y+e.size/2);
       ctx.closePath();
       ctx.fill();
+    } else if(e.type==="boss"){
+      ctx.fillStyle="yellow";
+      ctx.beginPath();
+      ctx.arc(e.x,e.y,e.size/2,0,Math.PI*2);
+      ctx.fill();
+    } else if(e.type==="mini-boss"){
+      ctx.fillStyle="orange";
+      ctx.beginPath();
+      ctx.arc(e.x,e.y,e.size/2,0,Math.PI*2);
+      ctx.fill();
+    } else if(e.type==="reflector"){
+      ctx.save();
+      ctx.translate(e.x,e.y);
+      ctx.rotate(e.angle);
+      ctx.fillStyle="purple";
+      ctx.fillRect(-e.width/2,-e.height/2,e.width,e.height);
+      ctx.restore();
+    } else if(e.type==="diamond"){
+      ctx.save();
+      ctx.translate(e.x,e.y);
+      ctx.beginPath();
+      ctx.moveTo(0,-e.size/2 - e.pulse);
+      ctx.lineTo(e.size/2 + e.pulse,0);
+      ctx.lineTo(0,e.size/2 + e.pulse);
+      ctx.lineTo(-e.size/2 - e.pulse,0);
+      ctx.closePath();
+      ctx.strokeStyle=e.canReflect?"cyan":"white";
+      ctx.lineWidth=3;
+      ctx.stroke();
+      ctx.restore();
+
+      // Draw attachments
+      e.attachments.forEach(a=>{
+        ctx.fillStyle="white";
+        ctx.beginPath();
+        ctx.arc(a.x,a.y,a.size/2,0,Math.PI*2);
+        ctx.fill();
+      });
     }
-    else if(e.type==="boss"){ctx.fillStyle="yellow"; ctx.beginPath(); ctx.arc(e.x,e.y,e.size/2,0,Math.PI*2); ctx.fill();}
-    else if(e.type==="mini-boss"){ctx.fillStyle="orange"; ctx.beginPath(); ctx.arc(e.x,e.y,e.size/2,0,Math.PI*2); ctx.fill();}
-    else if(e.type==="reflector"){ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(e.angle); ctx.fillStyle="purple"; ctx.fillRect(-e.width/2,-e.height/2,e.width,e.height); ctx.restore();}
-    else if(e.type==="diamond"){ctx.save(); ctx.translate(e.x,e.y); ctx.beginPath(); ctx.moveTo(0,-e.size/2); ctx.lineTo(e.size/2,0); ctx.lineTo(0,e.size/2); ctx.lineTo(-e.size/2,0); ctx.closePath(); ctx.strokeStyle=e.canReflect?"cyan":"white"; ctx.lineWidth=3; ctx.stroke(); ctx.restore();}
   });
 }
 
-function drawLightning(){ctx.fillStyle="cyan"; lightning.forEach(l=>ctx.fillRect(l.x,l.y,l.size,l.size));}
+function drawLightning(){
+  ctx.fillStyle="cyan";
+  lightning.forEach(l=>ctx.fillRect(l.x,l.y,l.size,l.size));
+}
 
 function drawUI(){
-  ctx.fillStyle="white"; ctx.font="20px Arial";
+  ctx.fillStyle="white";
+  ctx.font="20px Arial";
   ctx.fillText(`Score: ${score}`,20,30);
   ctx.fillText(`Health: ${player.health}`,20,60);
   ctx.fillText(`Wave: ${wave}`,20,90);
@@ -549,7 +588,7 @@ function gameLoop(){
   drawLightning();
   drawUI();
 
-  // Check wave completion (wait for all non-diamond enemies and diamond dead)
+  // Check wave completion
   const aliveDiamonds = enemies.filter(e=>e.type==="diamond").length;
   const nonDiamondEnemies = enemies.filter(e=>e.type!=="diamond").length;
   if(aliveDiamonds===0 && nonDiamondEnemies===0){wave++; startWave();}
