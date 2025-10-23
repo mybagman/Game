@@ -325,30 +325,69 @@ function updateLightning() {
 
 // ======== Bullet Collisions ========
 function checkBulletCollisions() {
-  for (let bi=bullets.length-1;bi>=0;bi--) {
+  for (let bi = bullets.length - 1; bi >= 0; bi--) {
     const b = bullets[bi];
-    for (let ei=enemies.length-1;ei>=0;ei--) {
-      const e = enemies[ei];
-      const dx = b.x - e.x, dy = b.y - e.y;
-      const dist = Math.hypot(dx,dy);
 
-      if (e.type==="reflector") {
-        if (dist<e.width) {
-          lightning.push({x:b.x,y:b.y,dx:-b.dx,dy:-b.dy,size:6,damage:15});
-          bullets.splice(bi,1);
-          e.health -= 5;
-          if (e.health<=0){createExplosion(e.x,e.y,"purple");enemies.splice(ei,1);score+=20;}
-          break;
-        }
-      } else if (dist<e.size/2) {
+    for (let ei = enemies.length - 1; ei >= 0; ei--) {
+      const e = enemies[ei];
+      let hit = false;
+
+      // Reflector collision
+      if (e.type === "reflector") {
+        const radius = Math.max(e.width, e.height) / 2;
+        const dx = b.x - e.x;
+        const dy = b.y - e.y;
+        if (Math.hypot(dx, dy) < radius) hit = true;
+      } 
+      // Normal collision
+      else {
+        const radius = e.size / 2 || 20;
+        const dx = b.x - e.x;
+        const dy = b.y - e.y;
+        if (Math.hypot(dx, dy) < radius) hit = true;
+      }
+
+      if (hit) {
         e.health -= 10;
-        bullets.splice(bi,1);
-        if (e.health<=0){
-          createExplosion(e.x,e.y,e.type==="triangle"?"cyan":e.type==="boss"?"yellow":e.type==="mini-boss"?"orange":"white");
-          enemies.splice(ei,1);
-          score += (e.type==="boss"?100:e.type==="mini-boss"?50:10);
+        bullets.splice(bi, 1);
+
+        if (e.health <= 0) {
+          createExplosion(e.x, e.y,
+            e.type === "triangle" ? "cyan" :
+            e.type === "boss" ? "yellow" :
+            e.type === "mini-boss" ? "orange" :
+            e.type === "diamond" ? "white" : "red"
+          );
+          enemies.splice(ei, 1);
+          score += (e.type === "boss" ? 100 :
+                    e.type === "mini-boss" ? 50 :
+                    10);
         }
-        break;
+
+        break; // stop checking other enemies for this bullet
+      }
+
+      // ==== Diamond attachments collision ====
+      if (e.type === "diamond" && e.attachments.length > 0) {
+        for (let ai = e.attachments.length - 1; ai >= 0; ai--) {
+          const a = e.attachments[ai];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const radius = a.size / 2 || 15;
+
+          if (Math.hypot(dx, dy) < radius) {
+            a.health = (a.health || 30) - 10;
+            bullets.splice(bi, 1);
+
+            if (a.health <= 0) {
+              createExplosion(a.x, a.y, "white");
+              e.attachments.splice(ai, 1);
+              score += 5; // attachments give smaller score
+            }
+
+            break;
+          }
+        }
       }
     }
   }
