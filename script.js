@@ -5,9 +5,19 @@ canvas.width = 800;
 canvas.height = 600;
 
 let keys = {};
-document.addEventListener("keydown", e => keys[e.code] = true);
-document.addEventListener("keyup", e => keys[e.code] = false);
+let shootKeys = {};
 
+document.addEventListener("keydown", e => {
+  if (!keys[e.code]) {
+    keys[e.code] = true;
+    shootKeys[e.code] = true; // Track new key press for shooting
+  }
+});
+
+document.addEventListener("keyup", e => {
+  keys[e.code] = false;
+  shootKeys[e.code] = false;
+});
 let player = { x: 100, y: canvas.height / 2, w: 30, h: 30, color: "cyan", speed: 5, hp: 3 };
 let bullets = [];
 let enemies = [];
@@ -43,14 +53,14 @@ function updatePlayer() {
 function handleShooting() {
   const now = Date.now();
 
-  // Only fire one bullet per key press or every cooldown period
   if (now - lastShotTime < shootCooldown) return;
 
   let dirX = 0, dirY = 0;
-  if (keys["ArrowUp"]) dirY = -1;
-  if (keys["ArrowDown"]) dirY = 1;
-  if (keys["ArrowLeft"]) dirX = -1;
-  if (keys["ArrowRight"]) dirX = 1;
+
+  if (shootKeys["ArrowUp"]) dirY = -1;
+  if (shootKeys["ArrowDown"]) dirY = 1;
+  if (shootKeys["ArrowLeft"]) dirX = -1;
+  if (shootKeys["ArrowRight"]) dirX = 1;
 
   if (dirX !== 0 || dirY !== 0) {
     const len = Math.sqrt(dirX * dirX + dirY * dirY);
@@ -69,6 +79,9 @@ function handleShooting() {
     });
 
     lastShotTime = now;
+
+    // Prevent multiple shots until key is released
+    for (let key in shootKeys) shootKeys[key] = false;
   }
 }
 
