@@ -824,4 +824,3 @@ function startFirstWave() {
 
 startFirstWave();
 gameLoop();
-gameLoop();
