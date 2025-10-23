@@ -108,12 +108,12 @@ function spawnReflector(target, index, total) {
     x: target.x,
     y: target.y,
     size: 60,
-    health: 50,
+    health: 300, // Increased health
     type: "reflector",
     angle: 0,
-    radius: 120, // distance from boss
-    orbitAngle: (index / total) * Math.PI * 2, // spread evenly
-    orbitSpeed: 0.03, // rotation speed
+    radius: 120,
+    orbitAngle: (index / total) * Math.PI * 2,
+    orbitSpeed: 0.03,
     target: target
   });
 }
