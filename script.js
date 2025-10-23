@@ -351,24 +351,25 @@ function updateEnemies() {
 
       // Reflector behavior
       if (e.type === "reflector") {
-        // Move toward closest player bullet
-        if (bullets.length > 0) {
-          let closestBullet = bullets.reduce((prev, curr) => {
-            const prevDist = Math.hypot(prev.x - e.x, prev.y - e.y);
-            const currDist = Math.hypot(curr.x - e.x, curr.y - e.y);
-            return currDist < prevDist ? curr : prev;
-          });
+  if (bullets.length > 0) {
+    // find the closest bullet
+    let closestBullet = bullets.reduce((prev, curr) => {
+      const prevDist = Math.hypot(prev.x - e.x, prev.y - e.y);
+      const currDist = Math.hypot(curr.x - e.x, curr.y - e.y);
+      return currDist < prevDist ? curr : prev;
+    });
 
-          const dxBullet = closestBullet.x - e.x;
-          const dyBullet = closestBullet.y - e.y;
-          const distBullet = Math.hypot(dxBullet, dyBullet) || 1;
-          e.x += (dxBullet / distBullet) * e.speed;
-          e.y += (dyBullet / distBullet) * e.speed;
-        }
+    // move toward bullet
+    const dxBullet = closestBullet.x - e.x;
+    const dyBullet = closestBullet.y - e.y;
+    const distBullet = Math.hypot(dxBullet, dyBullet) || 1;
+    e.x += (dxBullet / distBullet) * e.speed;
+    e.y += (dyBullet / distBullet) * e.speed;
+  }
 
-        // Rotation for visual spinning
-        e.angle = (e.angle || 0) + 0.1;
-      }
+  // optional: keep rotation for spinning visual
+  e.angle += 0.1;
+}
 
       // Player collision
       if (dist < (player.size / 2 + e.size / 2)) {
