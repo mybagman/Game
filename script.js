@@ -351,21 +351,24 @@ function updateEnemies() {
       }
 
       // Reflector behavior
-      if (e.type === "reflector") {
-  if (bullets.length > 0) {
-    // find the closest bullet
-    let closestBullet = bullets.reduce((prev, curr) => {
-      const prevDist = Math.hypot(prev.x - e.x, prev.y - e.y);
-      const currDist = Math.hypot(curr.x - e.x, curr.y - e.y);
-      return currDist < prevDist ? curr : prev;
-    });
+      if (bullets.length > 0) {
+  // find the closest bullet
+  let closestBullet = bullets.reduce((prev, curr) => {
+    const prevDist = Math.hypot(prev.x - e.x, prev.y - e.y);
+    const currDist = Math.hypot(curr.x - e.x, curr.y - e.y);
+    return currDist < prevDist ? curr : prev;
+  });
 
-    // move toward bullet
-    const dxBullet = closestBullet.x - e.x;
-    const dyBullet = closestBullet.y - e.y;
-    const distBullet = Math.hypot(dxBullet, dyBullet) || 1;
-    e.x += (dxBullet / distBullet) * e.speed;
-    e.y += (dyBullet / distBullet) * e.speed;
+  const dxBullet = closestBullet.x - e.x;
+  const dyBullet = closestBullet.y - e.y;
+  const distBullet = Math.hypot(dxBullet, dyBullet) || 1;
+
+  const maxChaseDistance = 300; // only chase bullets within 300px
+  const moveSpeed = Math.min(e.speed, distBullet / 5); // slower movement toward bullet
+
+  if (distBullet < maxChaseDistance) {
+    e.x += (dxBullet / distBullet) * moveSpeed;
+    e.y += (dyBullet / distBullet) * moveSpeed;
   }
 
   // optional: keep rotation for spinning visual
