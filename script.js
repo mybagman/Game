@@ -126,7 +126,6 @@ function spawnReflector(x, y) {
   });
 }
 
-// ======== Diamond Enemy ========
 function spawnDiamondEnemy(x = canvas.width / 2, y = canvas.height / 2) {
   enemies.push({
     x, y,
@@ -136,7 +135,7 @@ function spawnDiamondEnemy(x = canvas.width / 2, y = canvas.height / 2) {
     attachments: [],
     canReflect: false,
     speed: 0,
-    angle: 0,
+    angle: Math.random()*Math.PI*2,
     shootTimer: 0,
     pulse: 0
   });
@@ -158,8 +157,9 @@ function attractEnemiesToDiamond(diamond, allEnemies) {
 
 function attachToDiamond(diamond, enemy) {
   enemy.attachedTo = diamond;
-  enemy.offsetIndex = diamond.attachments.length;
+  enemy.orbitAngle = Math.random() * Math.PI * 2;
   diamond.attachments.push(enemy);
+
   if (enemy.type === "triangle") enemy.fireRateBoost = true;
   else if (enemy.type === "red-square") enemy.spawnMini = true;
   else if (enemy.type === "reflector") diamond.canReflect = true;
@@ -227,8 +227,9 @@ function updateBoss(boss) {
   boss.shootTimer++;
   if (boss.shootTimer > 150) {
     boss.shootTimer = 0;
-    let dirs = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
-    dirs.forEach(d => lightning.push({x:boss.x,y:boss.y,dx:d.x*5,dy:d.y*5,size:6,damage:20}));
+    [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].forEach(d => 
+      lightning.push({x:boss.x,y:boss.y,dx:d.x*5,dy:d.y*5,size:6,damage:20})
+    );
   }
 }
 
@@ -257,13 +258,12 @@ function updateMiniBoss(boss) {
   boss.shootTimer++;
   if (boss.shootTimer > 180) {
     boss.shootTimer = 0;
-    const dirs = [
+    [
       { x: 0, y: -1 },{ x: 0, y: 1 },{ x: -1, y: 0 },{ x: 1, y: 0 },
       { x: 1, y: 1 },{ x: 1, y: -1 },{ x: -1, y: 1 },{ x: -1, y: -1 }
-    ];
-    dirs.forEach(d => {
-      const mag = Math.hypot(d.x, d.y) || 1;
-      lightning.push({ x: boss.x, y: boss.y, dx: (d.x/mag)*5, dy:(d.y/mag)*5, size:6, damage:10 });
+    ].forEach(d => {
+      const mag = Math.hypot(d.x,d.y)||1;
+      lightning.push({x:boss.x,y:boss.y,dx:d.x/mag*5,dy:d.y/mag*5,size:6,damage:10});
     });
   }
 }
@@ -318,7 +318,7 @@ function updateEnemies() {
         a.y = e.y + Math.sin(a.orbitAngle) * orbitRadius;
       });
 
-      // Pulse effect for visual feedback
+      // Pulse effect
       e.pulse = Math.sin(e.shootTimer * 0.1) * 5;
 
       // Diamond abilities
@@ -350,6 +350,7 @@ function updateEnemies() {
       }
     }
 
+    // Player collision
     const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
     if (distToPlayer < (e.size/2 + player.size/2)) {
       player.health -= (e.type==="triangle"?25:15);
@@ -482,129 +483,74 @@ function drawEnemies(){
   enemies.forEach(e=>{
         if(e.type==="normal"){
       ctx.fillStyle="red";
-      ctx.fillRect(e.x-e.size/2,e.y-e.size/2,e.size,e.size);
+      ctx.beginPath();
+      ctx.arc(e.x,e.y,e.size/2,0,Math.PI*2);ctx.fill();
     } else if(e.type==="triangle"){
       ctx.fillStyle="cyan";
       ctx.beginPath();
       ctx.moveTo(e.x,e.y-e.size/2);
       ctx.lineTo(e.x-e.size/2,e.y+e.size/2);
       ctx.lineTo(e.x+e.size/2,e.y+e.size/2);
-      ctx.closePath();
-      ctx.fill();
+      ctx.closePath();ctx.fill();
+    } else if(e.type==="diamond"){
+      ctx.fillStyle="white";
+      ctx.beginPath();
+      ctx.moveTo(e.x,e.y-e.size/2);
+      ctx.lineTo(e.x-e.size/2,e.y);
+      ctx.lineTo(e.x,e.y+e.size/2);
+      ctx.lineTo(e.x+e.size/2,e.y);
+      ctx.closePath();ctx.fill();
     } else if(e.type==="boss"){
-      ctx.fillStyle="yellow";
-      ctx.beginPath();
-      ctx.arc(e.x,e.y,e.size/2,0,Math.PI*2);
-      ctx.fill();
+      ctx.fillStyle="yellow"; ctx.beginPath();
+      ctx.arc(e.x,e.y,e.size/2,0,Math.PI*2);ctx.fill();
     } else if(e.type==="mini-boss"){
-      ctx.fillStyle="orange";
-      ctx.beginPath();
-      ctx.arc(e.x,e.y,e.size/2,0,Math.PI*2);
-      ctx.fill();
+      ctx.fillStyle="orange"; ctx.beginPath();
+      ctx.arc(e.x,e.y,e.size/2,0,Math.PI*2);ctx.fill();
     } else if(e.type==="reflector"){
-      ctx.save();
-      ctx.translate(e.x,e.y);
-      ctx.rotate(e.angle);
-      ctx.fillStyle="purple";
+      ctx.fillStyle="magenta";
+      ctx.save();ctx.translate(e.x,e.y);ctx.rotate(e.angle);
       ctx.fillRect(-e.width/2,-e.height/2,e.width,e.height);
       ctx.restore();
-    } else if(e.type==="diamond"){
-      ctx.save();
-      ctx.translate(e.x,e.y);
-      ctx.beginPath();
-      ctx.moveTo(0,-e.size/2 - e.pulse);
-      ctx.lineTo(e.size/2 + e.pulse,0);
-      ctx.lineTo(0,e.size/2 + e.pulse);
-      ctx.lineTo(-e.size/2 - e.pulse,0);
-      ctx.closePath();
-      ctx.strokeStyle=e.canReflect?"cyan":"white";
-      ctx.lineWidth=3;
-      ctx.stroke();
-      ctx.restore();
-
-      // Draw attachments
+    }
+    // attachments
+    if(e.type==="diamond" && e.attachments.length>0){
       e.attachments.forEach(a=>{
-        ctx.fillStyle="white";
-        ctx.beginPath();
-        ctx.arc(a.x,a.y,a.size/2,0,Math.PI*2);
-        ctx.fill();
+        ctx.fillStyle="lime";
+        ctx.beginPath();ctx.arc(a.x,a.y,a.size/2,0,Math.PI*2);ctx.fill();
       });
     }
   });
 }
 
-function drawLightning(){
-  ctx.fillStyle="cyan";
-  lightning.forEach(l=>ctx.fillRect(l.x,l.y,l.size,l.size));
+// ======== Wave Logic ========
+function nextWave(){
+  wave++;
+  if(wave===2) spawnTriangleEnemies(5);
+  else if(wave===3) spawnDiamondEnemy();
+  else if(wave===4) spawnBoss();
+  else if(wave===5) spawnMiniBoss();
+  // add further waves here
 }
 
-function drawUI(){
-  ctx.fillStyle="white";
-  ctx.font="20px Arial";
-  ctx.fillText(`Score: ${score}`,20,30);
-  ctx.fillText(`Health: ${player.health}`,20,60);
-  ctx.fillText(`Wave: ${wave}`,20,90);
-}
-
-// ======== Waves ========
-const waves = [
-  { enemies:[{type:"normal",count:3}] },
-  { enemies:[{type:"triangle",count:2},{type:"normal",count:3}] },
-  { enemies:[{type:"boss",count:1}] },
-  { enemies:[{type:"diamond",count:1},{type:"normal",count:2}] }
-];
-
-function startWave(){
-  if(wave>waves.length) wave=1;
-  const currentWave=waves[wave-1];
-  console.log("Starting wave",wave);
-  currentWave.enemies.forEach(e=>{
-    switch(e.type){
-      case "normal": spawnEnemies(e.count); break;
-      case "triangle": spawnTriangleEnemies(e.count); break;
-      case "boss": spawnBoss(); break;
-      case "mini-boss": spawnMiniBoss(); break;
-      case "reflector": for(let i=0;i<e.count;i++) spawnReflector(Math.random()*canvas.width,Math.random()*canvas.height); break;
-      case "diamond": for(let i=0;i<e.count;i++) spawnDiamondEnemy(); break;
-    }
-  });
-}
-
-// ======== Game Loop ========
-function gameLoop(){
+// ======== Main Game Loop ========
+function loop(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   movePlayer();
   handleShooting();
   updateBullets();
-  checkBulletCollisions();
   updateEnemies();
   updateLightning();
-  updateTunnels();
   updateExplosions();
-
+  updateTunnels();
+  checkBulletCollisions();
   drawPlayer();
   drawBullets();
   drawEnemies();
-  drawLightning();
-  drawUI();
 
-  // Check wave completion
-  const aliveDiamonds = enemies.filter(e=>e.type==="diamond").length;
-  const nonDiamondEnemies = enemies.filter(e=>e.type!=="diamond").length;
-  if(aliveDiamonds===0 && nonDiamondEnemies===0){wave++; startWave();}
+  // Wave progression example
+  if(enemies.length===0){ nextWave(); }
 
-  if(player.health<=0){
-    ctx.fillStyle="red";
-    ctx.font="60px Arial";
-    ctx.fillText("GAME OVER",canvas.width/2-150,canvas.height/2);
-    highScores.push(score);
-    localStorage.setItem("highScores",JSON.stringify(highScores.sort((a,b)=>b-a).slice(0,10)));
-    return;
-  }
-
-  requestAnimationFrame(gameLoop);
+  requestAnimationFrame(loop);
 }
 
-// ======== Start Game ========
-startWave();
-gameLoop();
+loop();
