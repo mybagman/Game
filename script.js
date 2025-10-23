@@ -1,4 +1,4 @@
-// Full integrated script with diamond enemy + waves as requested
+// Full game script with Diamond enemy integration (complete)
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -9,18 +9,22 @@ canvas.height = window.innerHeight;
 
 // ======== Game Variables ========
 let keys = {};
-let bullets = [];
-let enemies = [];
-let lightning = [];
+let bullets = [];        // player bullets
+let enemies = [];        // normal enemies (red-square, triangle, reflector, boss, mini-boss)
+let lightning = [];      // enemy projectiles
 let explosions = [];
-let diamonds = [];
+let diamonds = [];       // active diamond enemies (rare)
 let score = 0;
-let waveIndex = 0; // waves 0..10 per your breakdown
+let wave = 0;            // waves numbered 0..10 per your list (displayed as wave+1)
 let minionsToAdd = [];
 let tunnels = [];
 
+// player
 let lastDir = { x: 1, y: 0 };
 let shootCooldown = 0;
+let waveTransition = false;
+let waveTransitionTimer = 0;
+const WAVE_BREAK_MS = 2500; // 2.5 seconds between waves
 
 let player = {
   x: canvas.width / 2,
@@ -32,12 +36,17 @@ let player = {
 };
 
 // ======== Controls ========
-document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+document.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+});
+document.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
 
-// ======== Shooting ========
+// ======== Shoot (player uses arrow keys for shooting) ========
 function handleShooting() {
   if (shootCooldown > 0) shootCooldown--;
+
   let dirX = 0, dirY = 0;
   if (keys["arrowup"]) dirY = -1;
   if (keys["arrowdown"]) dirY = 1;
@@ -61,26 +70,25 @@ function updateBullets() {
   bullets = bullets.filter(b => {
     b.x += b.dx;
     b.y += b.dy;
-    return b.x >= 0 && b.x <= canvas.width && b.y >= 0 && b.y <= canvas.height;
+    return b.x >= -20 && b.x <= canvas.width + 20 && b.y >= -20 && b.y <= canvas.height + 20;
   });
 }
 
-// ======== Enemy Spawning ========
-function spawnEnemies(count) {
+// ======== Spawning helpers ========
+function spawnRedSquares(count) {
   for (let i = 0; i < count; i++) {
     enemies.push({
       x: Math.random() * canvas.width,
       y: Math.random() * (canvas.height / 2),
       size: 30,
-      speed: 2,
+      speed: 1.8,
       health: 30,
-      type: "normal",
+      type: "red-square",
       shootTimer: 0
     });
   }
 }
-
-function spawnTriangleEnemies(count) {
+function spawnTriangles(count) {
   for (let i = 0; i < count; i++) {
     enemies.push({
       x: Math.random() * canvas.width,
@@ -93,277 +101,96 @@ function spawnTriangleEnemies(count) {
     });
   }
 }
-
-function spawnReflector(x, y) {
-  enemies.push({
-    x: x,
-    y: y,
-    width: 40,
-    height: 20,
-    angle: 0,
-    speed: 0.8,
-    health: 200,
-    type: "reflector"
-  });
+function spawnReflectors(count) {
+  for (let i = 0; i < count; i++) {
+    spawnReflector(Math.random() * canvas.width, Math.random() * canvas.height);
+  }
 }
-
 function spawnBoss() {
-  enemies.push({
-    x: canvas.width / 2,
-    y: 100,
-    size: 150,
-    health: 1000,
-    type: "boss",
-    spawnTimer: 0,
-    shootTimer: 0
-  });
+  enemies.push({ x: canvas.width / 2, y: 100, size: 150, health: 1000, type: "boss", spawnTimer: 0, shootTimer: 0 });
 }
-
 function spawnMiniBoss() {
-  enemies.push({
-    x: canvas.width / 2,
-    y: 120,
-    size: 80,
-    health: 500,
-    type: "mini-boss",
-    spawnTimer: 0,
-    shootTimer: 0
-  });
+  enemies.push({ x: Math.random() * canvas.width, y: 120 + Math.random() * 60, size: 80, health: 500, type: "mini-boss", spawnTimer: 0, shootTimer: 0 });
+}
+function spawnReflector(x, y) {
+  enemies.push({ x, y, width: 40, height: 20, angle: 0, speed: 0.8, health: 200, type: "reflector" });
 }
 
-// ======== Diamond: spawn / behavior / attachments ========
+// ======== Diamond spawning (enemy) ========
 function spawnDiamondEnemy(x = canvas.width / 2, y = canvas.height / 3) {
-  // Diamond enemy: moves around, attracts enemies, attaches them when close.
   const diamond = {
     x, y,
     size: 40,
-    health: 300,
+    health: 200,
     type: "diamond",
-    attachments: [],    // attached enemies (objects removed from enemies[] and moved here)
-    canReflect: false,  // set when reflectors attach
-    spawnMini: false,   // set when red-square attaches (spawns minions)
-    fireRateBoost: false, // set when triangle attaches
+    attachments: [], // will store attached enemy objects (removed from enemies[] when attached)
+    canReflect: false,
     angle: Math.random() * Math.PI * 2,
     shootTimer: 0,
-    orbitSpeed: 0.02,
-    pulse: 0
+    pulse: 0,
+    roamTarget: null // for seeking enemies
   };
 
-  // Additionally: spawn potential attachable enemies near the diamond (they will start as separate enemies)
-  // We'll add them as regular enemies positioned in a ring around the diamond so they can be attracted & attached.
-  const attachables = [];
-  // Add 5 red-squares, 5 triangles, 5 reflectors as separate enemies (per your requirement)
-  for (let i = 0; i < 5; i++) {
-    // red-square (treated as 'normal' with a special 'red-square' tag)
-    attachables.push({
-      x: diamond.x + Math.cos(i / 5 * Math.PI * 2) * 80 + (Math.random() * 20 - 10),
-      y: diamond.y + Math.sin(i / 5 * Math.PI * 2) * 80 + (Math.random() * 20 - 10),
-      size: 24,
-      speed: 2,
-      health: 30,
-      type: "red-square",
-      shootTimer: 0
-    });
-    // triangle
-    attachables.push({
-      x: diamond.x + Math.cos((i + 0.3) / 5 * Math.PI * 2) * 100 + (Math.random() * 20 - 10),
-      y: diamond.y + Math.sin((i + 0.3) / 5 * Math.PI * 2) * 100 + (Math.random() * 20 - 10),
-      size: 24,
-      speed: 1.5,
-      health: 35,
-      type: "triangle",
-      shootTimer: 0
-    });
-    // reflector
-    attachables.push({
-      x: diamond.x + Math.cos((i + 0.6) / 5 * Math.PI * 2) * 120 + (Math.random() * 20 - 10),
-      y: diamond.y + Math.sin((i + 0.6) / 5 * Math.PI * 2) * 120 + (Math.random() * 20 - 10),
-      width: 30,
-      height: 14,
-      angle: 0,
-      speed: 0.8,
-      health: 50,
-      type: "reflector",
-      shootTimer: 0
-    });
-  }
-
-  // push diamond as an enemy entity (so updateEnemies handles it)
-  enemies.push(diamond);
-  // push attachables as normal enemies (they may get later attached by diamond)
-  enemies.push(...attachables);
-  return diamond;
+  // create diamond as separate entity
+  diamonds.push(diamond);
 }
 
+// Helper: attract enemies to diamond (pull into diamond to attach)
 function attractEnemiesToDiamond(diamond, allEnemies) {
-  // stronger pull so attachments happen noticeably
-  allEnemies.forEach(e => {
-    if (!e || e === diamond) return;
-    if (e.attachedTo) return; // already attached
-    // only attract attachable types (normal/red-square/triangle/reflector)
-    if (!["normal","red-square","triangle","reflector"].includes(e.type)) return;
+  for (let i = allEnemies.length - 1; i >= 0; i--) {
+    const e = allEnemies[i];
+    if (!e || e === diamond || e.attachedTo || e.type === "boss" || e.type === "mini-boss") continue;
     const dx = diamond.x - e.x;
     const dy = diamond.y - e.y;
     const dist = Math.hypot(dx, dy);
-    if (dist < 300 && diamond.attachments.length < 15) { // allow up to many attachments
-      // stronger factor than earlier: 0.06
-      e.x += dx * 0.06;
-      e.y += dy * 0.06;
+    // stronger attraction than earlier default
+    if (dist < 260 && diamond.attachments.length < 15) {
+      // pull faster if closer
+      const pull = 0.04 + (1 - Math.min(dist / 260, 1)) * 0.06;
+      e.x += dx * pull;
+      e.y += dy * pull;
+      // attach if very close
       if (dist < 28) {
+        // remove from enemies and attach
+        allEnemies.splice(i, 1);
         attachToDiamond(diamond, e);
       }
     }
-  });
+  }
 }
 
 function attachToDiamond(diamond, enemy) {
-  // remove enemy from enemies array (it will be removed naturally by caller when filtering)
   enemy.attachedTo = diamond;
+  // set orbit angle for attachment visuals and positioning
   enemy.orbitAngle = Math.random() * Math.PI * 2;
-  // store minimal data for attachment; keep original type and stats
-  diamond.attachments.push(enemy);
-
-  // apply attachment flags to diamond
-  if (enemy.type === "triangle") diamond.fireRateBoost = true;
-  if (enemy.type === "red-square") diamond.spawnMini = true;
+  // small differentiation for reflectors
+  if (enemy.type === "triangle") enemy.fireRateBoost = true;
+  if (enemy.type === "red-square") enemy.spawnMini = true;
   if (enemy.type === "reflector") diamond.canReflect = true;
+  // reduce their movement since they're attached
+  enemy.speed = 0;
+  diamond.attachments.push(enemy);
 }
 
-// When diamond dies, spawn attachments back as enemies (detached)
-function diamondDeath(diamond) {
-  createExplosion(diamond.x, diamond.y, "white");
-  diamond.attachments.forEach(a => {
-    // Convert back to enemies with a little scatter so player sees them reappearing
-    const ex = a.x + (Math.random() * 40 - 20);
-    const ey = a.y + (Math.random() * 40 - 20);
-    if (a.type === "reflector") {
-      enemies.push({
-        x: ex, y: ey, width: a.width || 30, height: a.height || 14, angle: a.angle || 0, speed: 0.8, health: 50, type: "reflector"
-      });
-    } else {
-      enemies.push({
-        x: ex, y: ey, size: a.size || 24, speed: (a.speed || 2), health: a.health || 30, type: a.type === "red-square" ? "red-square" : "triangle", shootTimer: 0
-      });
-    }
-  });
-}
-
-// Update diamond (movement, attraction, attachments orbit + abilities)
-function updateDiamond(d) {
-  d.angle = d.angle || 0;
-  d.shootTimer = d.shootTimer || 0;
-  d.angle += d.orbitSpeed;
-
-  // Movement logic:
-  // If there are enemies (non-attached) the diamond will seek the nearest enemy to attract
-  const targets = enemies.filter(e => e !== d && !e.attachedTo && ["normal","triangle","red-square","reflector"].includes(e.type));
-  if (targets.length > 0) {
-    // move toward the closest target (makes it roam looking for enemies to absorb)
-    let closest = targets[0];
-    let cd = Math.hypot(targets[0].x - d.x, targets[0].y - d.y);
-    for (let t of targets) {
-      const td = Math.hypot(t.x - d.x, t.y - d.y);
-      if (td < cd) { cd = td; closest = t; }
-    }
-    // approach but not too fast
-    const dx = closest.x - d.x;
-    const dy = closest.y - d.y;
-    const mag = Math.hypot(dx, dy) || 1;
-    const moveSpeed = 1.8; // diamond is mobile
-    d.x += (dx / mag) * moveSpeed;
-    d.y += (dy / mag) * moveSpeed;
-  } else {
-    // no other enemies -> move towards player to be aggressive
-    const dx = player.x - d.x;
-    const dy = player.y - d.y;
-    const mag = Math.hypot(dx, dy) || 1;
-    const moveSpeed = 1.2;
-    d.x += (dx / mag) * moveSpeed;
-    d.y += (dy / mag) * moveSpeed;
-  }
-
-  // Attract nearby enemies (stronger)
-  attractEnemiesToDiamond(d, enemies);
-
-  // update attachments orbit positions and abilities
-  const orbitRadius = d.size + 30;
-  d.attachments.forEach((a, i) => {
-    a.orbitAngle = (a.orbitAngle || Math.random() * Math.PI * 2) + 0.06;
-    a.x = d.x + Math.cos(a.orbitAngle) * orbitRadius;
-    a.y = d.y + Math.sin(a.orbitAngle) * orbitRadius;
-
-    // shooting logic for attached triangles and red-squares
-    if (a.type === "triangle" || a.type === "red-square") {
-      a.shootTimer = (a.shootTimer || 0) + 1;
-      const shootThreshold = a.type === "triangle" ? 90 : 120; // triangles shoot faster
-      const boosted = d.fireRateBoost ? 0.6 : 1.0;
-      if (a.shootTimer > shootThreshold * boosted) {
-        a.shootTimer = 0;
-        const dx = player.x - a.x;
-        const dy = player.y - a.y;
-        const mag = Math.hypot(dx, dy) || 1;
-        lightning.push({
-          x: a.x, y: a.y,
-          dx: (dx / mag) * 5,
-          dy: (dy / mag) * 5,
-          size: 6, damage: 12
-        });
-      }
-    }
-
-    // reflectors reflect bullets around them
-    if (a.type === "reflector") {
-      bullets.forEach(b => {
-        const dist = Math.hypot(b.x - a.x, b.y - a.y);
-        if (dist < 40) {
-          b.dx *= -1;
-          b.dy *= -1;
-        }
-      });
-    }
-  });
-
-  // Pulse visual
-  d.pulse = Math.sin(d.shootTimer * 0.12) * 4;
-
-  // Diamond base shooting (if it has triangle attachments or periodically)
-  d.shootTimer++;
-  if (d.shootTimer % 140 === 0) {
-    // fire a radial shot if has reflectors, else single shot toward player
-    if (d.canReflect) {
-      const dirs = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
-      dirs.forEach(dir => lightning.push({x:d.x,y:d.y,dx:dir.x*5,dy:dir.y*5,size:6,damage:18}));
-    } else {
-      const dx = player.x - d.x;
-      const dy = player.y - d.y;
-      const mag = Math.hypot(dx, dy) || 1;
-      lightning.push({x:d.x,y:d.y,dx:(dx/mag)*5,dy:(dy/mag)*5,size:6,damage:18});
-    }
-  }
-
-  // spawn minions if red-square attachments present and timer passes
-  if (d.spawnMini && d.shootTimer % 300 === 0) {
-    minionsToAdd.push({
-      x: d.x + (Math.random() - 0.5) * 80,
-      y: d.y + (Math.random() - 0.5) * 80,
-      size: 25,
+// Diamond death: release attachments as smaller minions (or explode)
+function diamondDeath(d) {
+  createExplosion(d.x, d.y, "white");
+  // release attachments as small enemies
+  d.attachments.forEach(a => {
+    // convert attachments to smaller, weaker enemies
+    enemies.push({
+      x: a.x + (Math.random() - 0.5) * 10,
+      y: a.y + (Math.random() - 0.5) * 10,
+      size: a.size ? Math.max(12, a.size * 0.6) : 15,
       speed: 2,
-      health: 30,
-      type: "normal",
+      health: Math.max(10, (a.health || 20) * 0.5),
+      type: a.type === "reflector" ? "reflector" : (a.type === "triangle" ? "triangle" : "red-square"),
       shootTimer: 0
     });
-  }
-
-  // collision with player
-  const distToPlayer = Math.hypot(d.x - player.x, d.y - player.y);
-  if (distToPlayer < (d.size / 2 + player.size / 2)) {
-    player.health -= 30; // diamond hits hard
-    createExplosion(d.x, d.y, "magenta");
-    // optional: diamond remains, don't destroy on collision naturally
-  }
+  });
 }
 
-// ======== Tunnel Logic ========
+// ======== Tunnel ========
 function spawnTunnel() {
   const wallHeight = canvas.height / 3;
   const wallWidth = 600;
@@ -372,7 +199,6 @@ function spawnTunnel() {
   tunnels.push(topWall, bottomWall);
   return { x: canvas.width, y: wallHeight, width: wallWidth, gapY: wallHeight };
 }
-
 function updateTunnels() {
   for (let i = tunnels.length - 1; i >= 0; i--) {
     const t = tunnels[i];
@@ -384,113 +210,283 @@ function updateTunnels() {
   }
 }
 
-// ======== Boss Logic ========
+// ======== Boss & Mini updates (unchanged) ========
 function updateBoss(boss) {
   boss.angle = boss.angle || 0;
   boss.angle += 0.01;
   boss.x = canvas.width / 2 + Math.cos(boss.angle) * 150;
   boss.y = 80 + Math.sin(boss.angle) * 50;
+
   boss.spawnTimer = boss.spawnTimer || 0;
   boss.spawnTimer++;
   if (boss.spawnTimer > 200) {
     boss.spawnTimer = 0;
-    minionsToAdd.push({ x: boss.x + (Math.random() - 0.5) * 100, y: boss.y + (Math.random() - 0.5) * 100, size: 30, speed: 2, health: 30, type: "normal", shootTimer: 0 });
+    minionsToAdd.push({
+      x: boss.x + (Math.random() - 0.5) * 100,
+      y: boss.y + (Math.random() - 0.5) * 100,
+      size: 30,
+      speed: 2,
+      health: 30,
+      type: "red-square",
+      shootTimer: 0
+    });
   }
+
   boss.shootTimer = boss.shootTimer || 0;
   boss.shootTimer++;
   if (boss.shootTimer > 150) {
     boss.shootTimer = 0;
-    [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].forEach(d => lightning.push({x:boss.x,y:boss.y,dx:d.x*5,dy:d.y*5,size:6,damage:20}));
+    [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].forEach(d => {
+      lightning.push({ x: boss.x, y: boss.y, dx: d.x*5, dy: d.y*5, size: 6, damage: 20 });
+    });
   }
 }
-
 function updateMiniBoss(boss) {
-  boss.angle = boss.angle || Math.random() * Math.PI * 2;
+  boss.angle = boss.angle || Math.random()*Math.PI*2;
   boss.angle += 0.02;
-  boss.x = canvas.width / 2 + Math.cos(boss.angle) * 100;
-  boss.y = 80 + Math.sin(boss.angle) * 30;
+  boss.x = canvas.width / 2 + Math.cos(boss.angle)*100;
+  boss.y = 80 + Math.sin(boss.angle)*30;
+
   boss.spawnTimer = boss.spawnTimer || 0;
   boss.spawnTimer++;
   if (boss.spawnTimer > 300) {
     boss.spawnTimer = 0;
-    minionsToAdd.push({ x: boss.x + (Math.random() - 0.5) * 80, y: boss.y + (Math.random() - 0.5) * 80, size: 25, speed: 2, health: 30, type: "normal", shootTimer: 0 });
+    minionsToAdd.push({ x: boss.x + (Math.random()-0.5)*80, y: boss.y + (Math.random()-0.5)*80, size: 25, speed:2, health:30, type: "red-square", shootTimer:0 });
   }
+
   boss.shootTimer = boss.shootTimer || 0;
   boss.shootTimer++;
   if (boss.shootTimer > 180) {
     boss.shootTimer = 0;
-    const dirs = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0},{x:1,y:1},{x:1,y:-1},{x:-1,y:1},{x:-1,y:-1}];
-    dirs.forEach(d => { const mag = Math.hypot(d.x,d.y)||1; lightning.push({x:boss.x,y:boss.y,dx:(d.x/mag)*5,dy:(d.y/mag)*5,size:6,damage:10}); });
+    [
+      { x: 0, y: -1 },{ x: 0, y: 1 },{ x: -1, y: 0 },{ x: 1, y: 0 },
+      { x: 1, y: 1 },{ x: 1, y: -1 },{ x: -1, y: 1 },{ x: -1, y: -1 }
+    ].forEach(d => {
+      const mag = Math.hypot(d.x, d.y)||1;
+      lightning.push({ x: boss.x, y: boss.y, dx: d.x/mag*5, dy: d.y/mag*5, size:6, damage:10 });
+    });
   }
 }
 
-// ======== Update Enemies (including diamond handling) ========
-function updateEnemies() {
-  enemies = enemies.filter(e => {
-    // diamond is managed here
-    if (e.type === "diamond") {
-      updateDiamond(e);
-      // keep diamond alive (we'll remove it if health <= 0 via bullet collisions)
-      return e.health > 0;
-    }
+// ======== Explosions ========
+function createExplosion(x,y,color="red"){
+  for (let i=0;i<20;i++){
+    explosions.push({ x, y, dx:(Math.random()-0.5)*6, dy:(Math.random()-0.5)*6, radius:Math.random()*4+2, color, life:30 });
+  }
+}
+function updateExplosions(){
+  explosions = explosions.filter(ex => {
+    ctx.fillStyle = ex.color;
+    ctx.beginPath();
+    ctx.arc(ex.x, ex.y, ex.radius, 0, Math.PI*2);
+    ctx.fill();
+    ex.x += ex.dx;
+    ex.y += ex.dy;
+    ex.life--;
+    return ex.life>0;
+  });
+}
 
-    // bosses
+// ======== Enemy update loop (includes diamond behavior) ========
+function updateEnemies() {
+  // Update diamonds first (they are separate in diamonds[])
+  for (let di = diamonds.length-1; di >= 0; di--) {
+    const d = diamonds[di];
+    updateDiamond(d);
+    if (d.health <= 0) {
+      // diamond death -> release attachments as smaller enemies
+      diamondDeath(d);
+      diamonds.splice(di,1);
+      score += 200;
+    }
+  }
+
+  // Update other enemies
+  enemies = enemies.filter(e => {
+    if (!e) return false;
     if (e.type === "boss") { updateBoss(e); return true; }
     if (e.type === "mini-boss") { updateMiniBoss(e); return true; }
+    if (e.type === "triangle" || e.type === "red-square" || e.type === "normal") {
+      const dx = player.x - e.x;
+      const dy = player.y - e.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      e.x += (dx / dist) * e.speed;
+      e.y += (dy / dist) * e.speed;
 
-    // normal behavior for other enemies (triangle, normal, red-square, reflector)
-    const dx = player.x - e.x;
-    const dy = player.y - e.y;
-    const dist = Math.hypot(dx, dy) || 1;
-    // ensure they have speed defined (reflectors use slower)
-    e.x += (dx / dist) * (e.speed || 1.5);
-    e.y += (dy / dist) * (e.speed || 1.5);
-
-    // Triangle shooting behavior
-    if (e.type === "triangle") {
-      e.shootTimer = (e.shootTimer || 0) + 1;
-      if (e.shootTimer > 100) {
-        e.shootTimer = 0;
-        const mag = Math.hypot(dx, dy) || 1;
-        lightning.push({x: e.x, y: e.y, dx: (dx / mag) * 5, dy: (dy / mag) * 5, size: 6, damage: 15});
+      if (e.type === "triangle") {
+        e.shootTimer = (e.shootTimer || 0) + 1;
+        if (e.shootTimer > 100) {
+          e.shootTimer = 0;
+          lightning.push({ x: e.x, y: e.y, dx: (dx/dist)*5, dy: (dy/dist)*5, size:6, damage:15 });
+        }
       }
-    }
 
-    // Reflector behavior (chase bullets a bit)
-    if (e.type === "reflector" && bullets.length > 0) {
-      let closest = bullets.reduce((p,c) => (Math.hypot(c.x-e.x,c.y-e.y) < Math.hypot(p.x-e.x,p.y-e.y) ? c : p));
-      const dxB = closest.x - e.x;
-      const dyB = closest.y - e.y;
-      const distB = Math.hypot(dxB, dyB) || 1;
-      const maxChaseDistance = 300;
-      const moveSpeed = Math.min(2, distB / 20);
-      if (distB < maxChaseDistance) {
-        e.x += (dxB / distB) * moveSpeed;
-        e.y += (dyB / distB) * moveSpeed;
+      // collision with player
+      const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
+      if (distToPlayer < (e.size/2 + player.size/2)) {
+        player.health -= (e.type === "triangle" ? 25 : 15);
+        createExplosion(e.x, e.y, e.type === "triangle" ? "cyan" : "red");
+        return false;
       }
-      e.angle += 0.1;
+      return true;
     }
 
-    // red-square: behaves like normal but could have special later
-    // Collision with player
-    const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
-    if (distToPlayer < (e.size / 2 + player.size / 2)) {
-      player.health -= (e.type === "triangle" ? 25 : 15);
-      createExplosion(e.x, e.y, e.type === "triangle" ? "cyan" : "red");
-      return false;
+    if (e.type === "reflector") {
+      // reflectors chase bullets if nearby
+      if (bullets.length > 0) {
+        let closest = bullets.reduce((p,c) => (Math.hypot(c.x-e.x,c.y-e.y) < Math.hypot(p.x-e.x,p.y-e.y) ? c : p));
+        const dx = closest.x - e.x;
+        const dy = closest.y - e.y;
+        const dist = Math.hypot(dx,dy) || 1;
+        if (dist < 300) {
+          const move = Math.min(2, dist/20);
+          e.x += (dx/dist) * move;
+          e.y += (dy/dist) * move;
+        }
+      }
+      e.angle = (e.angle || 0) + 0.1;
+      const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
+      if (distToPlayer < (e.size/2 + player.size/2 || 20)) {
+        player.health -= 15;
+        createExplosion(e.x, e.y, "magenta");
+        return false;
+      }
+      return true;
     }
 
+    // default keep
     return true;
   });
 
-  // add any minions requested by bosses/diamond
+  // Add minions queued by bosses / diamond
   if (minionsToAdd.length > 0) {
     enemies.push(...minionsToAdd);
     minionsToAdd = [];
   }
 }
 
-// ======== Lightning (enemy bullets) ========
+// ======== Diamond update: roam, attract, attach, use attachments ========
+function updateDiamond(d) {
+  // roam: if there are enemies (not attachments), seek nearest enemy; otherwise circle center
+  const roamSpeed = 1.6;
+  // find nearest non-attached enemy to pursue
+  let nearest = null;
+  let nd = Infinity;
+  for (const e of enemies) {
+    if (!e || e.type === "diamond") continue;
+    // only seek smaller units (not bosses)
+    if (["boss","mini-boss"].includes(e.type)) continue;
+    const dist = Math.hypot(e.x - d.x, e.y - d.y);
+    if (dist < nd) { nd = dist; nearest = e; }
+  }
+
+  if (nearest && nd < 800) {
+    // move toward nearest enemy (to grab it)
+    const dx = nearest.x - d.x;
+    const dy = nearest.y - d.y;
+    const mag = Math.hypot(dx,dy) || 1;
+    d.x += (dx/mag) * Math.min(roamSpeed, mag);
+    d.y += (dy/mag) * Math.min(roamSpeed, mag);
+  } else {
+    // orbit around center if no target
+    d.angle += 0.01;
+    const radius = Math.min(300, Math.max(120, (canvas.width + canvas.height)/8));
+    const cx = canvas.width/2, cy = canvas.height/2;
+    d.x = cx + Math.cos(d.angle) * radius;
+    d.y = cy + Math.sin(d.angle) * radius;
+  }
+
+  // Attract nearby enemies
+  attractEnemiesToDiamond(d, enemies);
+
+  // Update attachments orbit
+  for (let i = 0; i < d.attachments.length; i++) {
+    const a = d.attachments[i];
+    a.orbitAngle = (a.orbitAngle || 0) + 0.06 + (a.type === "reflector" ? 0.02 : 0);
+    const orbitRadius = d.size + 28 + (a.type === "reflector" ? 14 : 0);
+    a.x = d.x + Math.cos(a.orbitAngle) * orbitRadius;
+    a.y = d.y + Math.sin(a.orbitAngle) * orbitRadius;
+
+    // triangle and red-square attached behaviors
+    if (a.type === "triangle" || a.type === "red-square") {
+      a.shootTimer = (a.shootTimer || 0) + 1;
+      // triangles fire faster when attached (fireRateBoost)
+      const fireRate = a.type === "triangle" ? (a.fireRateBoost ? 40 : 100) : (a.type === "red-square" ? 120 : 100);
+      if (a.shootTimer > fireRate) {
+        a.shootTimer = 0;
+        const dx = player.x - a.x;
+        const dy = player.y - a.y;
+        const mag = Math.hypot(dx, dy) || 1;
+        lightning.push({ x: a.x, y: a.y, dx: (dx/mag)*5, dy: (dy/mag)*5, size: 6, damage: (a.type==="triangle"?15:10) });
+      }
+    }
+
+    // reflectors attached: reflect player bullets that pass near them
+    if (a.type === "reflector") {
+      for (let bi = bullets.length-1; bi >= 0; bi--) {
+        const b = bullets[bi];
+        const distB = Math.hypot(b.x - a.x, b.y - a.y);
+        if (distB < 40) {
+          // invert bullet into enemy projectile
+          lightning.push({ x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 6, damage: 12 });
+          bullets.splice(bi, 1);
+        }
+      }
+    }
+  }
+
+  // Diamond abilities based on attachments
+  d.shootTimer = (d.shootTimer || 0) + 1;
+  d.pulse = Math.sin(d.shootTimer * 0.1) * 4;
+
+  // If reflective capability (has reflector attachment) reflect bullets nearby
+  if (d.canReflect) {
+    for (let bi = bullets.length-1; bi >= 0; bi--) {
+      const b = bullets[bi];
+      const dx = b.x - d.x, dy = b.y - d.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 90) {
+        // reflect into enemy projectile
+        lightning.push({ x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 6, damage: 12 });
+        bullets.splice(bi, 1);
+      }
+    }
+  }
+
+  // If any attached red-square had spawnMini flag, spawn minions periodically
+  if (d.attachments.some(a=>a.spawnMini)) {
+    if (d.shootTimer % 200 === 0) {
+      minionsToAdd.push({
+        x: d.x + (Math.random()-0.5)*80,
+        y: d.y + (Math.random()-0.5)*80,
+        size: 25,
+        speed: 2,
+        health: 30,
+        type: "red-square",
+        shootTimer: 0
+      });
+    }
+  }
+
+  // Occasionally the diamond itself fires radial if it has attachments that boost it
+  if (d.attachments.length >= 3 && d.shootTimer % 180 === 0) {
+    // radial 4 shots
+    [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].forEach(dv => {
+      lightning.push({ x: d.x, y: d.y, dx: dv.x*6, dy: dv.y*6, size: 8, damage: 20 });
+    });
+  }
+
+  // Player collision with diamond
+  const distToPlayer = Math.hypot(d.x - player.x, d.y - player.y);
+  if (distToPlayer < (d.size/2 + player.size/2)) {
+    player.health -= 30;
+    createExplosion(d.x, d.y, "white");
+    // damage diamond a bit on collision
+    d.health -= 80;
+  }
+}
+
+// ======== Lightning (enemy projectiles) ========
 function updateLightning() {
   lightning = lightning.filter(l => {
     l.x += l.dx;
@@ -499,116 +495,83 @@ function updateLightning() {
       player.health -= l.damage;
       return false;
     }
-    return l.x >= 0 && l.x <= canvas.width && l.y >= 0 && l.y <= canvas.height;
+    return l.x >= -20 && l.x <= canvas.width + 20 && l.y >= -20 && l.y <= canvas.height + 20;
   });
 }
 
-// ======== Bullet Collisions (includes diamond attachments interaction) ========
+// ======== Bullet Collisions (includes diamond attachments) ========
 function checkBulletCollisions() {
   for (let bi = bullets.length - 1; bi >= 0; bi--) {
     const b = bullets[bi];
-    // check enemies
-    let hitSomething = false;
+    // check normal enemies
     for (let ei = enemies.length - 1; ei >= 0; ei--) {
       const e = enemies[ei];
-      // diamond main entity collision
-      if (e.type === "diamond") {
-        const r = e.size / 2;
-        if (Math.hypot(b.x - e.x, b.y - e.y) < r) {
-          e.health -= 15;
+      if (!e) continue;
+      if (e.type === "reflector") {
+        const dx = b.x - e.x;
+        const dy = b.y - e.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < Math.max(e.width, e.height)) {
+          // Reflect bullet as enemy projectile
+          lightning.push({ x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 6, damage: 15 });
           bullets.splice(bi, 1);
-          hitSomething = true;
+          e.health -= 5;
           if (e.health <= 0) {
-            // on death, diamond's attachments spawn back as enemies
-            diamondDeath(e);
+            createExplosion(e.x, e.y, "purple");
             enemies.splice(ei, 1);
-            score += 200;
+            score += 20;
           }
           break;
         }
       } else {
-        // reflectors have width/height collision
-        if (e.type === "reflector") {
-          const dx = b.x - e.x;
-          const dy = b.y - e.y;
-          const r = Math.max(e.width, e.height) / 2;
-          if (Math.hypot(dx, dy) < r) {
-            // reflect the bullet back as enemy lightning
-            lightning.push({ x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 6, damage: 15 });
-            bullets.splice(bi, 1);
-            e.health -= 5;
-            hitSomething = true;
-            if (e.health <= 0) {
-              createExplosion(e.x, e.y, "purple");
-              enemies.splice(ei, 1);
-              score += 20;
-            }
-            break;
+        if (Math.hypot(b.x - e.x, b.y - e.y) < (e.size || 20) / 2) {
+          e.health -= 10;
+          bullets.splice(bi, 1);
+          if (e.health <= 0) {
+            createExplosion(e.x, e.y,
+              e.type === "triangle" ? "cyan" :
+              e.type === "boss" ? "yellow" :
+              e.type === "mini-boss" ? "orange" : "red"
+            );
+            // if this was an attached-like unit (shouldn't be in enemies), just normal handling
+            enemies.splice(ei, 1);
+            score += (e.type === "boss" ? 100 : e.type === "mini-boss" ? 50 : 10);
           }
-        } else {
-          // other enemies
-          const rr = e.size / 2 || 15;
-          if (Math.hypot(b.x - e.x, b.y - e.y) < rr) {
-            e.health -= 10;
-            bullets.splice(bi, 1);
-            hitSomething = true;
-            if (e.health <= 0) {
-              createExplosion(e.x, e.y, e.type === "triangle" ? "cyan" : "red");
-              enemies.splice(ei, 1);
-              score += (e.type === "boss" ? 100 : e.type === "mini-boss" ? 50 : 10);
-            }
-            break;
-          }
+          break;
         }
       }
     }
-    if (hitSomething) continue;
 
-    // Additionally check diamond attachments (they orbit inside diamond object)
-    // Find diamond that has attachments
-    for (let di = 0; di < enemies.length && bi >= 0; di++) {
-      const e = enemies[di];
-      if (e.type !== "diamond") continue;
-      for (let ai = e.attachments.length - 1; ai >= 0; ai--) {
-        const a = e.attachments[ai];
-        const ar = (a.size || a.width || 20) / 2;
-        if (Math.hypot(b.x - a.x, b.y - a.y) < ar) {
+    // check diamond attachments
+    for (let di = diamonds.length - 1; di >= 0; di--) {
+      const d = diamonds[di];
+      // attachments are separate objects inside d.attachments
+      for (let ai = d.attachments.length - 1; ai >= 0; ai--) {
+        const a = d.attachments[ai];
+        const radius = (a.size || 20) / 2 || 10;
+        if (Math.hypot(b.x - a.x, b.y - a.y) < radius) {
           // hit attachment
           a.health = (a.health || 30) - 10;
           bullets.splice(bi, 1);
           if (a.health <= 0) {
             createExplosion(a.x, a.y, "white");
-            // remove attachment permanently
-            e.attachments.splice(ai, 1);
+            // remove attachment
+            d.attachments.splice(ai, 1);
             score += 5;
-            // if attachment was reflector/triangle change diamond flags
-            // recalc flags simply
-            e.canReflect = e.attachments.some(x => x.type === "reflector");
-            e.spawnMini = e.attachments.some(x => x.type === "red-square");
-            e.fireRateBoost = e.attachments.some(x => x.type === "triangle");
+            // if it was a reflector, remove reflect capability if none left
+            if (!d.attachments.some(at => at.type === "reflector")) d.canReflect = false;
           }
-          di = enemies.length; // break outer loop
+          // break out after handling one hit
+          ai = -1;
           break;
         }
       }
+      // bullets may have been spliced already
     }
   }
 }
 
-// ======== Explosions ========
-function createExplosion(x, y, color = "red") {
-  for (let i = 0; i < 20; i++) {
-    explosions.push({
-      x, y,
-      dx: (Math.random() - 0.5) * 6,
-      dy: (Math.random() - 0.5) * 6,
-      radius: Math.random() * 4 + 2,
-      color,
-      life: 30
-    });
-  }
-}
-
+// ======== Explosions Update ========
 function updateExplosions() {
   explosions = explosions.filter(ex => {
     ctx.fillStyle = ex.color;
@@ -622,34 +585,7 @@ function updateExplosions() {
   });
 }
 
-// ======== Player ========
-function movePlayer() {
-  let newX = player.x;
-  let newY = player.y;
-  if (keys["w"]) { newY -= player.speed; lastDir = { x: 0, y: -1 }; }
-  if (keys["s"]) { newY += player.speed; lastDir = { x: 0, y: 1 }; }
-  if (keys["a"]) { newX -= player.speed; lastDir = { x: -1, y: 0 }; }
-  if (keys["d"]) { newX += player.speed; lastDir = { x: 1, y: 0 }; }
-
-  // Tunnel collision
-  let blocked = false;
-  for (const t of tunnels) {
-    if (newX + player.size / 2 > t.x && newX - player.size / 2 < t.x + t.width &&
-        newY + player.size / 2 > t.y && newY - player.size / 2 < t.y + t.height) {
-      blocked = true;
-      player.health -= 1;
-      createExplosion(player.x, player.y, "cyan");
-      break;
-    }
-  }
-
-  if (!blocked) {
-    player.x = newX;
-    player.y = newY;
-  }
-}
-
-// ======== Drawing ========
+// ======== Draw Functions ========
 function drawPlayer() {
   ctx.fillStyle = "lime";
   ctx.fillRect(player.x - player.size / 2, player.y - player.size / 2, player.size, player.size);
@@ -660,26 +596,18 @@ function drawBullets() {
 }
 function drawEnemies() {
   enemies.forEach(e => {
-    if (e.type === "normal" || e.type === "red-square") {
-      ctx.fillStyle = (e.type === "red-square") ? "crimson" : "red";
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, (e.size || 30) / 2, 0, Math.PI * 2);
-      ctx.fill();
+    if (!e) return;
+    if (e.type === "red-square") {
+      ctx.fillStyle = "red";
+      ctx.fillRect(e.x - e.size / 2, e.y - e.size / 2, e.size, e.size);
     } else if (e.type === "triangle") {
       ctx.fillStyle = "cyan";
       ctx.beginPath();
-      ctx.moveTo(e.x, e.y - (e.size || 30) / 2);
-      ctx.lineTo(e.x - (e.size || 30) / 2, e.y + (e.size || 30) / 2);
-      ctx.lineTo(e.x + (e.size || 30) / 2, e.y + (e.size || 30) / 2);
+      ctx.moveTo(e.x, e.y - e.size / 2);
+      ctx.lineTo(e.x - e.size / 2, e.y + e.size / 2);
+      ctx.lineTo(e.x + e.size / 2, e.y + e.size / 2);
       ctx.closePath();
       ctx.fill();
-    } else if (e.type === "reflector") {
-      ctx.save();
-      ctx.translate(e.x, e.y);
-      ctx.rotate(e.angle || 0);
-      ctx.fillStyle = "magenta";
-      ctx.fillRect(- (e.width || 30) / 2, - (e.height || 14) / 2, e.width || 30, e.height || 14);
-      ctx.restore();
     } else if (e.type === "boss") {
       ctx.fillStyle = "yellow";
       ctx.beginPath();
@@ -690,129 +618,171 @@ function drawEnemies() {
       ctx.beginPath();
       ctx.arc(e.x, e.y, e.size / 2, 0, Math.PI * 2);
       ctx.fill();
-    } else if (e.type === "diamond") {
-      // diamond base
+    } else if (e.type === "reflector") {
       ctx.save();
       ctx.translate(e.x, e.y);
-      ctx.beginPath();
-      ctx.moveTo(0, -e.size / 2 - e.pulse);
-      ctx.lineTo(e.size / 2 + e.pulse, 0);
-      ctx.lineTo(0, e.size / 2 + e.pulse);
-      ctx.lineTo(-e.size / 2 - e.pulse, 0);
-      ctx.closePath();
-      ctx.fillStyle = "magenta";
-      ctx.fill();
+      ctx.rotate(e.angle || 0);
+      ctx.fillStyle = "purple";
+      ctx.fillRect(-e.width / 2, -e.height / 2, e.width, e.height);
       ctx.restore();
-
-      // attachments (orbiting)
-      e.attachments.forEach(a => {
-        if (a.type === "reflector") {
-          ctx.save();
-          ctx.translate(a.x, a.y);
-          ctx.rotate(a.angle || 0);
-          ctx.fillStyle = "purple";
-          ctx.fillRect(- (a.width || 20) / 2, - (a.height || 10) / 2, a.width || 20, a.height || 10);
-          ctx.restore();
-        } else if (a.type === "triangle") {
-          ctx.fillStyle = "cyan";
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y - (a.size || 14) / 2);
-          ctx.lineTo(a.x - (a.size || 14) / 2, a.y + (a.size || 14) / 2);
-          ctx.lineTo(a.x + (a.size || 14) / 2, a.y + (a.size || 14) / 2);
-          ctx.closePath();
-          ctx.fill();
-        } else { // red-square
-          ctx.fillStyle = "lime";
-          ctx.beginPath();
-          ctx.arc(a.x, a.y, (a.size || 14) / 2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      });
     }
   });
 }
-function drawLightning() { ctx.fillStyle = "cyan"; lightning.forEach(l => ctx.fillRect(l.x - l.size/2, l.y - l.size/2, l.size, l.size)); }
+function drawDiamonds() {
+  diamonds.forEach(d => {
+    // diamond body
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    ctx.rotate(d.angle || 0);
+    ctx.strokeStyle = d.canReflect ? "cyan" : "white";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, -d.size / 2 - d.pulse);
+    ctx.lineTo(d.size / 2 + d.pulse, 0);
+    ctx.lineTo(0, d.size / 2 + d.pulse);
+    ctx.lineTo(-d.size / 2 - d.pulse, 0);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
 
-function drawHUD() {
-  // health bar
-  ctx.fillStyle = "gray"; ctx.fillRect(20,20,200,20);
-  ctx.fillStyle = "lime"; ctx.fillRect(20,20,200*(player.health/player.maxHealth),20);
-  ctx.strokeStyle = "black"; ctx.strokeRect(20,20,200,20);
-  ctx.fillStyle = "white"; ctx.font = "18px Arial";
-  ctx.fillText(`Score: ${score}`, 20, 60);
-  ctx.fillText(`Wave: ${waveIndex + 1}`, 20, 90);
-}
-
-// ======== Waves config (your breakdown) ========
-const waves = [
-  { enemies: [{ type: "red-square", count: 2 }] }, // 0
-  { enemies: [{ type: "red-square", count: 3 }, { type: "triangle", count: 2 }] }, // 1
-  { enemies: [{ type: "red-square", count: 5 }, { type: "triangle", count: 4 }] }, // 2
-  { enemies: [{ type: "red-square", count: 3 }, { type: "triangle", count: 2 }, { type: "reflector", count: 1 }] }, // 3
-  { tunnel: true, enemies: [{ type: "red-square", count: 5 }, { type: "triangle", count: 4 }, { type: "reflector", count: 1 }] }, // 4
-  { enemies: [{ type: "boss", count: 1 }, { type: "triangle", count: 3 }] }, // 5
-  { enemies: [{ type: "reflector", count: 2 }, { type: "triangle", count: 5 }] }, // 6
-  { tunnel: true, enemies: [{ type: "red-square", count: 5 }, { type: "triangle", count: 5 }, { type: "reflector", count: 1 }, { type: "mini-boss", count: 1 }] }, // 7
-  { enemies: [{ type: "mini-boss", count: 3 }, { type: "boss", count: 1 }, { type: "triangle", count: 5 }, { type: "reflector", count: 1 }] }, // 8
-  { tunnel: true, enemies: [{ type: "triangle", count: 8 }, { type: "reflector", count: 3 }] }, // 9
-  { enemies: [{ type: "red-square", count: 5 }, { type: "triangle", count: 5 }, { type: "reflector", count: 3 }], diamond: true } // 10 (diamond wave)
-];
-
-function spawnWave(index) {
-  if (index < 0 || index >= waves.length) return;
-  const data = waves[index];
-
-  if (data.tunnel) spawnTunnel();
-
-  if (data.enemies) {
-    data.enemies.forEach(group => {
-      if (group.type === "red-square") {
-        // spawn red-square as normal enemies labeled type 'red-square'
-        for (let i = 0; i < group.count; i++) {
-          enemies.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, size: 24, speed: 2, health: 30, type: "red-square", shootTimer: 0 });
-        }
-      } else if (group.type === "normal") {
-        spawnEnemies(group.count);
-      } else if (group.type === "triangle") {
-        spawnTriangleEnemies(group.count);
-      } else if (group.type === "reflector") {
-        for (let i=0;i<group.count;i++) spawnReflector(Math.random()*canvas.width, Math.random()*canvas.height);
-      } else if (group.type === "boss") {
-        for (let i=0;i<group.count;i++) spawnBoss();
-      } else if (group.type === "mini-boss") {
-        for (let i=0;i<group.count;i++) spawnMiniBoss();
+    // attachments
+    d.attachments.forEach(a => {
+      if (a.type === "triangle") {
+        ctx.fillStyle = "cyan";
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y - (a.size||20)/2);
+        ctx.lineTo(a.x - (a.size||20)/2, a.y + (a.size||20)/2);
+        ctx.lineTo(a.x + (a.size||20)/2, a.y + (a.size||20)/2);
+        ctx.closePath();
+        ctx.fill();
+      } else if (a.type === "reflector") {
+        ctx.save();
+        ctx.translate(a.x, a.y);
+        ctx.rotate(a.orbitAngle || 0);
+        ctx.fillStyle = "magenta";
+        ctx.fillRect(- (a.width||20)/2, - (a.height||10)/2, a.width||20, a.height||10);
+        ctx.restore();
+      } else {
+        // red-square
+        ctx.fillStyle = "lime";
+        ctx.fillRect(a.x - (a.size||20)/2, a.y - (a.size||20)/2, a.size||20, a.size||20);
       }
     });
-  }
+  });
+}
+function drawLightning() {
+  ctx.fillStyle = "cyan";
+  lightning.forEach(l => ctx.fillRect(l.x - (l.size||6)/2, l.y - (l.size||6)/2, l.size||6, l.size||6));
+}
+function drawExplosions() { updateExplosions(); }
 
-  if (data.diamond) {
-    // spawn diamond and its attachable enemies (they start separate)
-    spawnDiamondEnemy(canvas.width/2, canvas.height/3);
+// ======== HUD / UI ========
+function drawUI() {
+  // Health bar
+  ctx.fillStyle = "gray";
+  ctx.fillRect(20, 20, 200, 20);
+  ctx.fillStyle = "lime";
+  ctx.fillRect(20, 20, 200 * Math.max(0, player.health / player.maxHealth), 20);
+  ctx.strokeStyle = "black";
+  ctx.strokeRect(20, 20, 200, 20);
+
+  // Score & Wave
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText(`Score: ${score}`, 20, 60);
+  ctx.fillText(`Wave: ${wave}`, 20, 90);
+
+  // Wave transition notice
+  if (waveTransition) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(canvas.width/2 - 160, canvas.height/2 - 40, 320, 80);
+    ctx.fillStyle = "white";
+    ctx.font = "24px Arial";
+    ctx.fillText("Wave Complete", canvas.width/2 - 80, canvas.height/2);
   }
 }
 
-// next wave only when no enemies and no tunnels and no diamonds (alive)
-function nextWaveIfClear() {
-  const haveEnemies = enemies.length > 0;
-  const haveTunnels = tunnels.length > 0;
-  if (!haveEnemies && !haveTunnels) {
-    // spawn next wave if exists
-    if (waveIndex < waves.length - 1) {
-      waveIndex++;
-      spawnWave(waveIndex);
-    } else {
-      // reached the last wave, optionally loop or stop - we'll just keep last wave repeating
-      // If you prefer "end game" here, change behavior.
+// ======== Waves definition (your specified breakdown) ========
+const waves = [
+  { enemies: [{ type: "red-square", count: 2 }] }, // 0
+  { enemies: [{ type: "red-square", count: 3 }, { type: "triangle", count: 2 }] }, //1
+  { enemies: [{ type: "red-square", count: 5 }, { type: "triangle", count: 4 }] }, //2
+  { enemies: [{ type: "red-square", count: 3 }, { type: "triangle", count: 2 }, { type: "reflector", count: 1 }] }, //3
+  { tunnel: true, enemies: [{ type: "red-square", count: 5 }, { type: "triangle", count: 4 }, { type: "reflector", count: 1 }] }, //4
+  { enemies: [{ type: "boss", count: 1 }, { type: "triangle", count: 3 }] }, //5
+  { enemies: [{ type: "reflector", count: 2 }, { type: "triangle", count: 5 }] }, //6
+  { tunnel: true, enemies: [{ type: "red-square", count: 5 }, { type: "triangle", count: 5 }, { type: "reflector", count: 1 }, { type: "mini-boss", count: 1 }] }, //7
+  { enemies: [{ type: "mini-boss", count: 3 }, { type: "boss", count: 1 }, { type: "triangle", count: 5 }, { type: "reflector", count: 1 }] }, //8
+  { tunnel: true, enemies: [{ type: "triangle", count: 8 }, { type: "reflector", count: 3 }] }, //9
+  { enemies: [{ type: "red-square", count: 5 }, { type: "triangle", count: 5 }, { type: "reflector", count: 3 }, { type: "diamond", count: 1 }] } //10 final with diamond
+];
+
+function spawnWave(waveIndex) {
+  if (waveIndex < 0 || waveIndex >= waves.length) return;
+  const waveData = waves[waveIndex];
+
+  if (waveData.tunnel) spawnTunnel();
+
+  if (waveData.enemies) {
+    waveData.enemies.forEach(group => {
+      if (group.type === "red-square") spawnRedSquares(group.count);
+      else if (group.type === "triangle") spawnTriangles(group.count);
+      else if (group.type === "reflector") spawnReflectors(group.count);
+      else if (group.type === "boss") for (let i = 0; i < group.count; i++) spawnBoss();
+      else if (group.type === "mini-boss") for (let i = 0; i < group.count; i++) spawnMiniBoss();
+      else if (group.type === "diamond") for (let i = 0; i < group.count; i++) spawnDiamondEnemy();
+    });
+  }
+}
+
+// ======== Wave progression handling ========
+function tryAdvanceWave() {
+  // round ends only when enemies AND diamonds AND tunnels are gone
+  if (enemies.length === 0 && diamonds.length === 0 && tunnels.length === 0 && !waveTransition) {
+    // if we've finished all waves, stop or loop
+    if (wave >= waves.length - 1) {
+      // final wave completed — could show victory, for now pause
+      waveTransition = true;
+      waveTransitionTimer = Date.now();
+      // do not auto-increment beyond final wave
+      return;
+    }
+    // start transition (show "Wave Complete" for a bit), then spawn next
+    waveTransition = true;
+    waveTransitionTimer = Date.now();
+    setTimeout(() => {
+      wave++;
+      spawnWave(wave);
+      waveTransition = false;
+    }, WAVE_BREAK_MS);
+  }
+}
+
+// ======== Main Loop ========
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Player movement
+  let newX = player.x, newY = player.y;
+  if (keys["w"]) { newY -= player.speed; lastDir = { x: 0, y: -1 }; }
+  if (keys["s"]) { newY += player.speed; lastDir = { x: 0, y: 1 }; }
+  if (keys["a"]) { newX -= player.speed; lastDir = { x: -1, y: 0 }; }
+  if (keys["d"]) { newX += player.speed; lastDir = { x: 1, y: 0 }; }
+
+  // tunnel blocking
+  let blocked = false;
+  for (const t of tunnels) {
+    if (newX + player.size / 2 > t.x && newX - player.size / 2 < t.x + t.width &&
+        newY + player.size / 2 > t.y && newY - player.size / 2 < t.y + t.height) {
+      blocked = true;
+      player.health -= 1;
+      createExplosion(player.x, player.y, "cyan");
+      break;
     }
   }
-}
+  if (!blocked) { player.x = newX; player.y = newY; }
 
-// ======== Main Game Loop ========
-function gameLoop() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // update / move
-  movePlayer();
+  // Updates
   handleShooting();
   updateBullets();
   updateEnemies();
@@ -821,30 +791,22 @@ function gameLoop() {
   updateExplosions();
   updateTunnels();
 
-  // draw
+  // Draw
   drawPlayer();
   drawBullets();
   drawEnemies();
+  drawDiamonds();
   drawLightning();
-  drawHUD();
+  drawExplosions();
+  drawUI();
 
-  // spawn initial wave if none
-  if (enemies.length === 0 && tunnels.length === 0 && waveIndex === 0 && score === 0) {
-    // start with wave 0 if not started
-    spawnWave(0);
+  // spawn initial wave if at start
+  if (wave === 0 && enemies.length === 0 && diamonds.length === 0 && !waveTransition) {
+    spawnWave(wave);
   }
 
-  // wave progression: ensure diamond attachments that detached have been re-added as enemies via diamondDeath
-  // next wave only when there are no enemies and no tunnels (diamond when alive is in enemies[] so covered)
-  if (enemies.length === 0 && tunnels.length === 0) {
-    // move to next wave
-    if (waveIndex < waves.length - 1) {
-      waveIndex++;
-      spawnWave(waveIndex);
-    } else {
-      // optionally, repeat last wave
-    }
-  }
+  // try to advance when cleared
+  tryAdvanceWave();
 
   if (player.health > 0) {
     requestAnimationFrame(gameLoop);
@@ -858,5 +820,5 @@ function gameLoop() {
 }
 
 // ======== Start Game ========
-spawnWave(0);
+spawnWave(wave);
 gameLoop();
