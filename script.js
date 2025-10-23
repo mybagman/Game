@@ -126,7 +126,9 @@ function spawnReflector(x, y) {
   });
 }
 
-function spawnDiamondEnemy(x = canvas.width + 50, y = Math.random() * (canvas.height - 60)) {
+// ======== Diamond Enemy ========
+function spawnDiamondEnemy(x = canvas.width - 100, y = canvas.height / 2) {
+  console.log("Diamond spawned at", x, y);
   enemies.push({
     x,
     y,
@@ -134,18 +136,40 @@ function spawnDiamondEnemy(x = canvas.width + 50, y = Math.random() * (canvas.he
     health: 200,
     type: "diamond",
     attachments: [],
-    canReflect: false
+    canReflect: false,
+    speed: 1
   });
+}
+
+function attractEnemiesToDiamond(diamond, allEnemies) {
+  allEnemies.forEach(e => {
+    if (e === diamond || e.attachedTo) return;
+    const dx = diamond.x - e.x;
+    const dy = diamond.y - e.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 200 && diamond.attachments.length < 4) {
+      e.x += dx * 0.02;
+      e.y += dy * 0.02;
+      if (dist < 25) attachToDiamond(diamond, e);
+    }
+  });
+}
+
+function attachToDiamond(diamond, enemy) {
+  enemy.attachedTo = diamond;
+  enemy.offsetIndex = diamond.attachments.length;
+  diamond.attachments.push(enemy);
+  if (enemy.type === "triangle") enemy.fireRateBoost = true;
+  else if (enemy.type === "red-square") enemy.spawnMini = true;
+  else if (enemy.type === "reflector") diamond.canReflect = true;
 }
 
 // ======== Tunnel Logic ========
 function spawnTunnel() {
   const wallHeight = canvas.height / 3;
   const wallWidth = 600;
-
   const topWall = { x: canvas.width, y: 0, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true };
   const bottomWall = { x: canvas.width, y: canvas.height - wallHeight, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true };
-
   tunnels.push(topWall, bottomWall);
   return { x: canvas.width, y: wallHeight, width: wallWidth, gapY: wallHeight };
 }
@@ -154,16 +178,14 @@ function updateTunnels() {
   for (let i = tunnels.length - 1; i >= 0; i--) {
     const t = tunnels[i];
     if (!t.active) continue;
-
     t.x -= t.speed;
     ctx.fillStyle = "rgba(0, 255, 255, 0.5)";
     ctx.fillRect(t.x, t.y, t.width, t.height);
-
     if (t.x + t.width < 0) tunnels.splice(i, 1);
   }
 }
 
-// ======== Boss / Mini-Boss Logic ========
+// ======== Boss Logic ========
 function updateBoss(boss) {
   boss.angle = boss.angle || 0;
   boss.angle += 0.01;
@@ -230,31 +252,6 @@ function updateMiniBoss(boss) {
   }
 }
 
-// ======== Diamond Helpers ========
-function attractEnemiesToDiamond(diamond, allEnemies) {
-  allEnemies.forEach(e => {
-    if (e === diamond || e.attachedTo) return;
-    const dx = diamond.x - e.x;
-    const dy = diamond.y - e.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist < 200 && diamond.attachments.length < 4) {
-      e.x += dx * 0.02;
-      e.y += dy * 0.02;
-      if (dist < 25) attachToDiamond(diamond, e);
-    }
-  });
-}
-
-function attachToDiamond(diamond, enemy) {
-  enemy.attachedTo = diamond;
-  enemy.offsetIndex = diamond.attachments.length;
-  diamond.attachments.push(enemy);
-
-  if (enemy.type === "triangle") enemy.fireRateBoost = true;
-  else if (enemy.type === "red-square") enemy.spawnMini = true;
-  else if (enemy.type === "reflector") diamond.canReflect = true;
-}
-
 // ======== Update Enemies ========
 function updateEnemies() {
   enemies = enemies.filter(e => {
@@ -287,8 +284,8 @@ function updateEnemies() {
     }
     else if (e.type==="diamond") {
       attractEnemiesToDiamond(e, enemies);
-      e.x -= 1.5;
-      if (e.x+e.size<0) return false;
+      e.x -= e.speed;
+      if (e.x + e.size < 0) return false;
       const points = [
         {x:e.x, y:e.y-e.size/2},
         {x:e.x+e.size/2, y:e.y},
@@ -298,7 +295,6 @@ function updateEnemies() {
       e.attachments.forEach((a,i)=>{a.x=points[i].x; a.y=points[i].y});
     }
 
-    // Player collision
     const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
     if (distToPlayer < (e.size/2 + player.size/2)) {
       player.health -= (e.type==="triangle"?25:15);
@@ -314,7 +310,7 @@ function updateEnemies() {
   }
 }
 
-// ======== Lightning Update ========
+// ======== Lightning ========
 function updateLightning() {
   lightning = lightning.filter(l => {
     l.x += l.dx;
@@ -378,7 +374,7 @@ function updateExplosions(){
   });
 }
 
-// ======== Player Movement ========
+// ======== Player ========
 function movePlayer(){
   let newX=player.x,newY=player.y;
   if(keys["w"]){newY-=player.speed;lastDir={x:0,y:-1}}
@@ -440,39 +436,32 @@ const waves = [
   { enemies:[{type:"normal",count:3}] },
   { enemies:[{type:"triangle",count:2},{type:"normal",count:3}] },
   { enemies:[{type:"boss",count:1}] },
-  { enemies:[{type:"diamond",count:1},{type:"normal",count:3}] },
-  { enemies:[{type:"triangle",count:3},{type:"normal",count:5
-    }] },
-  { enemies:[{type:"mini-boss",count:1},{type:"normal",count:5}] },
-  { enemies:[{type:"diamond",count:1},{type:"triangle",count:3},{type:"normal",count:5}] }
+  { enemies:[{type:"diamond",count:1},{type:"normal",count:2}] }
 ];
 
-function startWave() {
-  if (wave > waves.length) wave = 1;
-  const currentWave = waves[wave - 1];
-  currentWave.enemies.forEach(e => {
+function startWave(){
+  if(wave>waves.length) wave=1;
+  const currentWave=waves[wave-1];
+  console.log("Starting wave",wave);
+  currentWave.enemies.forEach(e=>{
     switch(e.type){
       case "normal": spawnEnemies(e.count); break;
       case "triangle": spawnTriangleEnemies(e.count); break;
       case "boss": spawnBoss(); break;
       case "mini-boss": spawnMiniBoss(); break;
-      case "reflector":
-        for(let i=0;i<e.count;i++) spawnReflector(Math.random()*canvas.width, Math.random()*canvas.height); 
-        break;
-      case "diamond":
-        for(let i=0;i<e.count;i++) spawnDiamondEnemy(); 
-        break;
+      case "reflector": for(let i=0;i<e.count;i++) spawnReflector(Math.random()*canvas.width,Math.random()*canvas.height); break;
+      case "diamond": for(let i=0;i<e.count;i++) spawnDiamondEnemy(); break;
     }
   });
 }
 
 // ======== Game Loop ========
-function gameLoop() {
+function gameLoop(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-
   movePlayer();
   handleShooting();
   updateBullets();
+  checkBulletCollisions();
   updateEnemies();
   updateLightning();
   updateTunnels();
@@ -485,19 +474,16 @@ function gameLoop() {
   drawUI();
 
   // Check wave completion
-  if (enemies.length === 0) {
-    wave++;
-    startWave();
-  }
+  const aliveDiamonds = enemies.filter(e=>e.type==="diamond").length;
+  if(enemies.length===aliveDiamonds || enemies.length===0){wave++; startWave();}
 
-  // Game over
-  if (player.health <= 0) {
-    ctx.fillStyle = "red";
-    ctx.font = "60px Arial";
-    ctx.fillText("GAME OVER", canvas.width/2-150, canvas.height/2);
+  if(player.health<=0){
+    ctx.fillStyle="red";
+    ctx.font="60px Arial";
+    ctx.fillText("GAME OVER",canvas.width/2-150,canvas.height/2);
     highScores.push(score);
-    localStorage.setItem("highScores", JSON.stringify(highScores.sort((a,b)=>b-a).slice(0,10)));
-    return; // Stop loop
+    localStorage.setItem("highScores",JSON.stringify(highScores.sort((a,b)=>b-a).slice(0,10)));
+    return;
   }
 
   requestAnimationFrame(gameLoop);
