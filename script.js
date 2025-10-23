@@ -78,13 +78,18 @@ function spawnTriangleEnemies(count) {
 }
 
 function spawnBoss() {
-  enemies.push({
+  const boss = {
     x: canvas.width / 2,
     y: 100,
     size: 150,
     health: 1000,
-    type: "boss"
-  });
+    type: "boss",
+    angle: 0,
+    shootTimer: 0,
+    spawnTimer: 0
+  };
+  enemies.push(boss);
+  return boss;
 }
 
 function spawnMiniBoss() {
@@ -97,14 +102,28 @@ function spawnMiniBoss() {
   });
 }
 
+// ======== Reflector Spawning ========
+function spawnReflector(target, index, total) {
+  enemies.push({
+    x: target.x,
+    y: target.y,
+    size: 60,
+    health: 50,
+    type: "reflector",
+    angle: 0,
+    radius: 120, // distance from boss
+    orbitAngle: (index / total) * Math.PI * 2, // spread evenly
+    orbitSpeed: 0.03, // rotation speed
+    target: target
+  });
+}
+
 // ======== Boss Logic ========
 function updateBoss(boss) {
-  boss.angle = boss.angle || 0;
   boss.angle += 0.01;
   boss.x = canvas.width / 2 + Math.cos(boss.angle) * 150;
   boss.y = 80 + Math.sin(boss.angle) * 50;
 
-  boss.spawnTimer = boss.spawnTimer || 0;
   boss.spawnTimer++;
   if (boss.spawnTimer > 200) {
     boss.spawnTimer = 0;
@@ -119,7 +138,6 @@ function updateBoss(boss) {
     });
   }
 
-  boss.shootTimer = boss.shootTimer || 0;
   boss.shootTimer++;
   if (boss.shootTimer > 150) {
     boss.shootTimer = 0;
@@ -142,6 +160,7 @@ function updateBoss(boss) {
   }
 }
 
+// ======== Mini-Boss Logic ========
 function updateMiniBoss(boss) {
   boss.angle = boss.angle || 0;
   boss.angle += 0.02;
@@ -211,7 +230,7 @@ function movePlayer() {
   if (keys["a"]) { newX -= player.speed; lastDir = { x: -1, y: 0 }; }
   if (keys["d"]) { newX += player.speed; lastDir = { x: 1, y: 0 }; }
 
-  // Tunnel collision logic stays the same
+  // Tunnel collision
   let blocked = false;
   for (const t of tunnels) {
     if (
@@ -233,6 +252,7 @@ function movePlayer() {
   }
 }
 
+// ======== Shooting ========
 let shootKeys = {};
 document.addEventListener("keydown", e => {
   if (["arrowup","arrowdown","arrowleft","arrowright"].includes(e.key.toLowerCase())) {
@@ -248,7 +268,6 @@ document.addEventListener("keyup", e => {
 let shootCooldown = 0;
 
 function handleShooting() {
-  // Decrease cooldown each frame
   if (shootCooldown > 0) shootCooldown--;
 
   let dirX = 0;
@@ -259,7 +278,6 @@ function handleShooting() {
   if (keys["arrowleft"]) dirX = -1;
   if (keys["arrowright"]) dirX = 1;
 
-  // Shoot if a direction is pressed and cooldown is 0
   if ((dirX !== 0 || dirY !== 0) && shootCooldown === 0) {
     const mag = Math.hypot(dirX, dirY) || 1;
     bullets.push({
@@ -269,7 +287,7 @@ function handleShooting() {
       dy: (dirY / mag) * 10,
       size: 6
     });
-    shootCooldown = 10; // Adjust fire rate: smaller = faster
+    shootCooldown = 10;
   }
 }
 
@@ -281,10 +299,10 @@ function updateBullets() {
   });
 }
 
-// ======== Tunnel Logic (FIXED) ========
+// ======== Tunnel ========
 function spawnTunnel() {
   const wallHeight = canvas.height / 3;
-  const wallWidth = 600; // ✅ Longer tunnel
+  const wallWidth = 600;
 
   const topWall = { x: canvas.width, y: 0, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true };
   const bottomWall = { x: canvas.width, y: canvas.height - wallHeight, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true };
@@ -303,9 +321,7 @@ function updateTunnels() {
     ctx.fillStyle = "rgba(0, 255, 255, 0.5)";
     ctx.fillRect(t.x, t.y, t.width, t.height);
 
-    if (t.x + t.width < 0) {
-      tunnels.splice(i, 1);
-    }
+    if (t.x + t.width < 0) tunnels.splice(i, 1);
   }
 }
 
@@ -314,7 +330,14 @@ function updateEnemies() {
   enemies = enemies.filter(e => {
     if (e.type === "boss") updateBoss(e);
     else if (e.type === "mini-boss") updateMiniBoss(e);
-    else {
+    else if (e.type === "reflector") {
+      if (e.target) {
+        e.orbitAngle += e.orbitSpeed;
+        e.x = e.target.x + Math.cos(e.orbitAngle) * e.radius;
+        e.y = e.target.y + Math.sin(e.orbitAngle) * e.radius;
+        e.angle += 0.1;
+      }
+    } else {
       const dx = player.x - e.x;
       const dy = player.y - e.y;
       const dist = Math.hypot(dx, dy);
@@ -335,6 +358,7 @@ function updateEnemies() {
           });
         }
       }
+
       if (dist < (player.size / 2 + e.size / 2)) {
         player.health -= (e.type === "triangle" ? 25 : 15);
         createExplosion(e.x, e.y, e.type === "triangle" ? "cyan" : "red");
@@ -369,14 +393,29 @@ function checkBulletCollisions() {
     const b = bullets[bi];
     for (let ei = enemies.length - 1; ei >= 0; ei--) {
       const e = enemies[ei];
+
       if (Math.hypot(b.x - e.x, b.y - e.y) < e.size / 2) {
+
+        // Reflect bullets if reflector
+        if (e.type === "reflector") {
+          bullets.push({
+            x: e.x,
+            y: e.y,
+            dx: -b.dx,
+            dy: -b.dy,
+            size: b.size
+          });
+        }
+
         e.health -= 10;
         bullets.splice(bi, 1);
+
         if (e.health <= 0) {
           createExplosion(e.x, e.y,
             e.type === "triangle" ? "cyan" :
             e.type === "boss" ? "yellow" :
-            e.type === "mini-boss" ? "orange" : "red"
+            e.type === "mini-boss" ? "orange" :
+            e.type === "reflector" ? "purple" : "red"
           );
           enemies.splice(ei, 1);
           score += (e.type === "boss" ? 100 : e.type === "mini-boss" ? 50 : 10);
@@ -387,7 +426,7 @@ function checkBulletCollisions() {
   }
 }
 
-// ======== Explosions Update ========
+// ======== Explosions ========
 function updateExplosions() {
   explosions = explosions.filter(ex => {
     ctx.fillStyle = ex.color;
@@ -435,6 +474,13 @@ function drawEnemies() {
       ctx.beginPath();
       ctx.arc(e.x, e.y, e.size / 2, 0, Math.PI * 2);
       ctx.fill();
+    } else if (e.type === "reflector") {
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.rotate(e.angle);
+      ctx.fillStyle = "purple";
+      ctx.fillRect(-e.size/2, -e.size/2, e.size, e.size);
+      ctx.restore();
     }
   });
 }
@@ -459,18 +505,14 @@ const waves = [
   { enemies: [{ type: "boss", count: 1 }] },
   { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] },
   { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] },
-
-  // Tunnel wave: many triangles + 1 mini-boss
   { 
     tunnel: true, 
     enemies: [
-      { type: "triangle", count: 10 }, // more triangles
+      { type: "triangle", count: 10 },
       { type: "mini-boss", count: 1 },
       { type: "normal", count: 4 }
     ] 
   },
-
-  // Wave after tunnel: 1 boss + 3 mini-boss
   { 
     enemies: [
       { type: "boss", count: 1 },
@@ -483,18 +525,22 @@ function spawnWave(waveIndex) {
   if (waveIndex >= waves.length) return;
   const waveData = waves[waveIndex];
 
-  // Spawn tunnel if it exists
   let gap = null;
-  if (waveData.tunnel) {
-    gap = spawnTunnel();
-  }
+  if (waveData.tunnel) gap = spawnTunnel();
 
-  // Spawn enemies
   if (waveData.enemies) {
     waveData.enemies.forEach(group => {
       if (group.type === "normal") spawnEnemies(group.count);
       else if (group.type === "triangle") spawnTriangleEnemies(group.count);
-      else if (group.type === "boss") for (let i = 0; i < group.count; i++) spawnBoss();
+      else if (group.type === "boss") {
+        for (let i = 0; i < group.count; i++) {
+          const boss = spawnBoss();
+          if (waveIndex === 2) {
+            // Attach 3 reflectors around boss
+            for (let r = 0; r < 3; r++) spawnReflector(boss, r, 3);
+          }
+        }
+      }
       else if (group.type === "mini-boss") for (let i = 0; i < group.count; i++) spawnMiniBoss();
     });
   }
@@ -525,9 +571,8 @@ function gameLoop() {
   drawUI();
   nextWave();
 
-  if (player.health > 0) {
-    requestAnimationFrame(gameLoop);
-  } else {
+  if (player.health > 0) requestAnimationFrame(gameLoop);
+  else {
     ctx.fillStyle = "white";
     ctx.font = "50px Arial";
     ctx.fillText("GAME OVER", canvas.width / 2 - 150, canvas.height / 2);
