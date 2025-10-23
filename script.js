@@ -66,8 +66,8 @@ function spawnEnemies(count) {
 function spawnTriangleEnemies(count) {
   for (let i = 0; i < count; i++) {
     enemies.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * (canvas.height / 2),
+      x: canvas.width - 100, // hang around right side
+      y: Math.random() * (canvas.height - 100) + 50,
       size: 30,
       speed: 1.5,
       health: 40,
@@ -78,18 +78,13 @@ function spawnTriangleEnemies(count) {
 }
 
 function spawnBoss() {
-  const boss = {
+  enemies.push({
     x: canvas.width / 2,
     y: 100,
     size: 150,
     health: 1000,
-    type: "boss",
-    angle: 0,
-    shootTimer: 0,
-    spawnTimer: 0
-  };
-  enemies.push(boss);
-  return boss;
+    type: "boss"
+  });
 }
 
 function spawnMiniBoss() {
@@ -102,28 +97,26 @@ function spawnMiniBoss() {
   });
 }
 
-// ======== Reflector Spawning ========
-function spawnReflector(target, index, total) {
+function spawnReflector(x, y) {
   enemies.push({
-    x: target.x,
-    y: target.y,
-    size: 60,
-    health: 300, // Increased health
-    type: "reflector",
+    x: x,
+    y: y,
+    width: 40,
+    height: 20,
     angle: 0,
-    radius: 120,
-    orbitAngle: (index / total) * Math.PI * 2,
-    orbitSpeed: 0.03,
-    target: target
+    health: 200,
+    type: "reflector"
   });
 }
 
 // ======== Boss Logic ========
 function updateBoss(boss) {
+  boss.angle = boss.angle || 0;
   boss.angle += 0.01;
   boss.x = canvas.width / 2 + Math.cos(boss.angle) * 150;
   boss.y = 80 + Math.sin(boss.angle) * 50;
 
+  boss.spawnTimer = boss.spawnTimer || 0;
   boss.spawnTimer++;
   if (boss.spawnTimer > 200) {
     boss.spawnTimer = 0;
@@ -138,6 +131,7 @@ function updateBoss(boss) {
     });
   }
 
+  boss.shootTimer = boss.shootTimer || 0;
   boss.shootTimer++;
   if (boss.shootTimer > 150) {
     boss.shootTimer = 0;
@@ -160,7 +154,6 @@ function updateBoss(boss) {
   }
 }
 
-// ======== Mini-Boss Logic ========
 function updateMiniBoss(boss) {
   boss.angle = boss.angle || 0;
   boss.angle += 0.02;
@@ -252,7 +245,6 @@ function movePlayer() {
   }
 }
 
-// ======== Shooting ========
 let shootKeys = {};
 document.addEventListener("keydown", e => {
   if (["arrowup","arrowdown","arrowleft","arrowright"].includes(e.key.toLowerCase())) {
@@ -299,7 +291,7 @@ function updateBullets() {
   });
 }
 
-// ======== Tunnel ========
+// ======== Tunnel Logic ========
 function spawnTunnel() {
   const wallHeight = canvas.height / 3;
   const wallWidth = 600;
@@ -321,7 +313,9 @@ function updateTunnels() {
     ctx.fillStyle = "rgba(0, 255, 255, 0.5)";
     ctx.fillRect(t.x, t.y, t.width, t.height);
 
-    if (t.x + t.width < 0) tunnels.splice(i, 1);
+    if (t.x + t.width < 0) {
+      tunnels.splice(i, 1);
+    }
   }
 }
 
@@ -331,12 +325,8 @@ function updateEnemies() {
     if (e.type === "boss") updateBoss(e);
     else if (e.type === "mini-boss") updateMiniBoss(e);
     else if (e.type === "reflector") {
-      if (e.target) {
-        e.orbitAngle += e.orbitSpeed;
-        e.x = e.target.x + Math.cos(e.orbitAngle) * e.radius;
-        e.y = e.target.y + Math.sin(e.orbitAngle) * e.radius;
-        e.angle += 0.1;
-      }
+      e.angle += 0.1;
+      // reflect bullets handled in checkBulletCollisions
     } else {
       const dx = player.x - e.x;
       const dy = player.y - e.y;
@@ -387,46 +377,56 @@ function updateLightning() {
   });
 }
 
-// ======== Bullet Collisions ========
+// ======== Bullet Collisions with Reflectors ========
 function checkBulletCollisions() {
   for (let bi = bullets.length - 1; bi >= 0; bi--) {
     const b = bullets[bi];
     for (let ei = enemies.length - 1; ei >= 0; ei--) {
       const e = enemies[ei];
-
-      if (Math.hypot(b.x - e.x, b.y - e.y) < e.size / 2) {
-
-        // Reflect bullets if reflector
-        if (e.type === "reflector") {
-          bullets.push({
-            x: e.x,
-            y: e.y,
+      if (e.type === "reflector") {
+        const dx = b.x - e.x;
+        const dy = b.y - e.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < e.width) {
+          // Reflect bullet as enemy bullet
+          lightning.push({
+            x: b.x,
+            y: b.y,
             dx: -b.dx,
             dy: -b.dy,
-            size: b.size
+            size: 6,
+            damage: 15
           });
+          bullets.splice(bi, 1);
+          e.health -= 5; // small damage
+          if (e.health <= 0) {
+            createExplosion(e.x, e.y, "purple");
+            enemies.splice(ei, 1);
+            score += 20;
+          }
+          break;
         }
-
-        e.health -= 10;
-        bullets.splice(bi, 1);
-
-        if (e.health <= 0) {
-          createExplosion(e.x, e.y,
-            e.type === "triangle" ? "cyan" :
-            e.type === "boss" ? "yellow" :
-            e.type === "mini-boss" ? "orange" :
-            e.type === "reflector" ? "purple" : "red"
-          );
-          enemies.splice(ei, 1);
-          score += (e.type === "boss" ? 100 : e.type === "mini-boss" ? 50 : 10);
+      } else {
+        if (Math.hypot(b.x - e.x, b.y - e.y) < e.size / 2) {
+          e.health -= 10;
+          bullets.splice(bi, 1);
+          if (e.health <= 0) {
+            createExplosion(e.x, e.y,
+              e.type === "triangle" ? "cyan" :
+              e.type === "boss" ? "yellow" :
+              e.type === "mini-boss" ? "orange" : "red"
+            );
+            enemies.splice(ei, 1);
+            score += (e.type === "boss" ? 100 : e.type === "mini-boss" ? 50 : 10);
+          }
+          break;
         }
-        break;
       }
     }
   }
 }
 
-// ======== Explosions ========
+// ======== Explosions Update ========
 function updateExplosions() {
   explosions = explosions.filter(ex => {
     ctx.fillStyle = ex.color;
@@ -479,7 +479,7 @@ function drawEnemies() {
       ctx.translate(e.x, e.y);
       ctx.rotate(e.angle);
       ctx.fillStyle = "purple";
-      ctx.fillRect(-e.size/2, -e.size/2, e.size, e.size);
+      ctx.fillRect(-e.width / 2, -e.height / 2, e.width, e.height);
       ctx.restore();
     }
   });
@@ -502,7 +502,7 @@ function drawUI() {
 const waves = [
   { enemies: [{ type: "normal", count: 3 }] },
   { enemies: [{ type: "triangle", count: 2 }, { type: "normal", count: 3 }] },
-  { enemies: [{ type: "boss", count: 1 }] },
+  { enemies: [{ type: "boss", count: 1 }, { type: "reflector", count: 3 }] }, // Added 3 reflectors
   { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] },
   { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] },
   { 
@@ -526,22 +526,21 @@ function spawnWave(waveIndex) {
   const waveData = waves[waveIndex];
 
   let gap = null;
-  if (waveData.tunnel) gap = spawnTunnel();
+  if (waveData.tunnel) {
+    gap = spawnTunnel();
+  }
 
   if (waveData.enemies) {
     waveData.enemies.forEach(group => {
       if (group.type === "normal") spawnEnemies(group.count);
       else if (group.type === "triangle") spawnTriangleEnemies(group.count);
-      else if (group.type === "boss") {
+      else if (group.type === "boss") for (let i = 0; i < group.count; i++) spawnBoss();
+      else if (group.type === "mini-boss") for (let i = 0; i < group.count; i++) spawnMiniBoss();
+      else if (group.type === "reflector") {
         for (let i = 0; i < group.count; i++) {
-          const boss = spawnBoss();
-          if (waveIndex === 2) {
-            // Attach 3 reflectors around boss
-            for (let r = 0; r < 3; r++) spawnReflector(boss, r, 3);
-          }
+          spawnReflector(canvas.width / 2 + i * 60 - 60, 200); // around boss
         }
       }
-      else if (group.type === "mini-boss") for (let i = 0; i < group.count; i++) spawnMiniBoss();
     });
   }
 }
@@ -571,8 +570,9 @@ function gameLoop() {
   drawUI();
   nextWave();
 
-  if (player.health > 0) requestAnimationFrame(gameLoop);
-  else {
+  if (player.health > 0) {
+    requestAnimationFrame(gameLoop);
+  } else {
     ctx.fillStyle = "white";
     ctx.font = "50px Arial";
     ctx.fillText("GAME OVER", canvas.width / 2 - 150, canvas.height / 2);
