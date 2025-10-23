@@ -206,12 +206,12 @@ function movePlayer() {
   let newX = player.x;
   let newY = player.y;
 
-  if (keys["w"] || keys["arrowup"]) { newY -= player.speed; lastDir = { x: 0, y: -1 }; }
-  if (keys["s"] || keys["arrowdown"]) { newY += player.speed; lastDir = { x: 0, y: 1 }; }
-  if (keys["a"] || keys["arrowleft"]) { newX -= player.speed; lastDir = { x: -1, y: 0 }; }
-  if (keys["d"] || keys["arrowright"]) { newX += player.speed; lastDir = { x: 1, y: 0 }; }
+  if (keys["w"]) { newY -= player.speed; lastDir = { x: 0, y: -1 }; }
+  if (keys["s"]) { newY += player.speed; lastDir = { x: 0, y: 1 }; }
+  if (keys["a"]) { newX -= player.speed; lastDir = { x: -1, y: 0 }; }
+  if (keys["d"]) { newX += player.speed; lastDir = { x: 1, y: 0 }; }
 
-  // Check tunnel collisions
+  // Tunnel collision logic stays the same
   let blocked = false;
   for (const t of tunnels) {
     if (
