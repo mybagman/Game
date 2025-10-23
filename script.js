@@ -181,21 +181,27 @@ function updateMiniBoss(boss) {
   if (boss.shootTimer > 180) {
     boss.shootTimer = 0;
     let dirs = [
-      { x: 0, y: -1 },
-      { x: 0, y: 1 },
-      { x: -1, y: 0 },
-      { x: 1, y: 0 }
-    ];
-    dirs.forEach(d => {
-      lightning.push({
-        x: boss.x,
-        y: boss.y,
-        dx: d.x * 5,
-        dy: d.y * 5,
-        size: 6,
-        damage: 10
-      });
-    });
+  { x: 0, y: -1 },
+  { x: 0, y: 1 },
+  { x: -1, y: 0 },
+  { x: 1, y: 0 },
+  { x: 1, y: 1 },
+  { x: 1, y: -1 },
+  { x: -1, y: 1 },
+  { x: -1, y: -1 }
+];
+
+dirs.forEach(d => {
+  const mag = Math.hypot(d.x, d.y) || 1;
+  lightning.push({
+    x: boss.x,
+    y: boss.y,
+    dx: (d.x / mag) * 5,
+    dy: (d.y / mag) * 5,
+    size: 6,
+    damage: 10
+  });
+});
   }
 }
 
