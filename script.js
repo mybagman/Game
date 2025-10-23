@@ -81,8 +81,8 @@ function spawnBoss() {
   enemies.push({
     x: canvas.width / 2,
     y: 100,
-    size: 150,        // BIGGER SIZE visually
-    health: 1000,     // MUCH STRONGER
+    size: 150,
+    health: 1000,
     type: "boss"
   });
 }
@@ -91,8 +91,8 @@ function spawnMiniBoss() {
   enemies.push({
     x: canvas.width / 2,
     y: 120,
-    size: 80,         // BIGGER SIZE visually
-    health: 500,      // STRONGER
+    size: 80,
+    health: 500,
     type: "mini-boss"
   });
 }
@@ -221,7 +221,7 @@ function movePlayer() {
       newY - player.size / 2 < t.y + t.height
     ) {
       blocked = true;
-      player.health -= 1; // touch tunnel = damage
+      player.health -= 1;
       createExplosion(player.x, player.y, "cyan");
       break;
     }
@@ -252,14 +252,13 @@ function updateBullets() {
 // ======== Tunnel Logic (FIXED) ========
 function spawnTunnel() {
   const wallHeight = canvas.height / 3;
-  const wallWidth = 300;
+  const wallWidth = 600; // ✅ Longer tunnel
 
   const topWall = { x: canvas.width, y: 0, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true };
   const bottomWall = { x: canvas.width, y: canvas.height - wallHeight, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true };
 
   tunnels.push(topWall, bottomWall);
 
-  // Return gap info for enemy spawn positioning
   return { x: canvas.width, y: wallHeight, width: wallWidth, gapY: wallHeight };
 }
 
@@ -268,7 +267,7 @@ function updateTunnels() {
     const t = tunnels[i];
     if (!t.active) continue;
 
-    t.x -= t.speed; // move wall
+    t.x -= t.speed;
     ctx.fillStyle = "rgba(0, 255, 255, 0.5)";
     ctx.fillRect(t.x, t.y, t.width, t.height);
 
@@ -281,11 +280,9 @@ function updateTunnels() {
 // ======== Enemy Logic ========
 function updateEnemies() {
   enemies = enemies.filter(e => {
-    if (e.type === "boss") {
-      updateBoss(e);
-    } else if (e.type === "mini-boss") {
-      updateMiniBoss(e);
-    } else {
+    if (e.type === "boss") updateBoss(e);
+    else if (e.type === "mini-boss") updateMiniBoss(e);
+    else {
       const dx = player.x - e.x;
       const dy = player.y - e.y;
       const dist = Math.hypot(dx, dy);
@@ -321,6 +318,7 @@ function updateEnemies() {
   }
 }
 
+// ======== Lightning ========
 function updateLightning() {
   lightning = lightning.filter(l => {
     l.x += l.dx;
@@ -333,6 +331,7 @@ function updateLightning() {
   });
 }
 
+// ======== Bullet Collisions ========
 function checkBulletCollisions() {
   for (let bi = bullets.length - 1; bi >= 0; bi--) {
     const b = bullets[bi];
@@ -429,7 +428,7 @@ const waves = [
   { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] },
   { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] },
   { tunnel: true, enemies: [{ type: "normal", count: 4 }, { type: "triangle", count: 2 }] },
-  { enemies: [{ type: "boss", count: 1 }] } // new wave 7
+  { enemies: [{ type: "boss", count: 1 }] } // ✅ Wave 7 boss
 ];
 
 function spawnWave(waveIndex) {
@@ -439,45 +438,18 @@ function spawnWave(waveIndex) {
   // Spawn tunnel if it exists
   let gap = null;
   if (waveData.tunnel) {
-    gap = spawnTunnel(); // tunnel adds walls and returns gap info
+    gap = spawnTunnel();
   }
 
   // Spawn enemies
   if (waveData.enemies) {
     waveData.enemies.forEach(group => {
-      // Use proper spawn functions for bosses and mini-bosses
-      if (group.type === "normal") {
-        for (let i = 0; i < group.count; i++) {
-          let spawnY = gap ? gap.gapY + Math.random() * 100 - 50 : Math.random() * canvas.height / 2;
-          enemies.push({
-            x: gap ? gap.x + Math.random() * 50 : Math.random() * canvas.width,
-            y: spawnY,
-            size: 30,
-            speed: 2,
-            health: 30,
-            type: "normal",
-            shootTimer: 0
-          });
-        }
-      } else if (group.type === "triangle") {
-        for (let i = 0; i < group.count; i++) spawnTriangleEnemies(1);
-      } else if (group.type === "boss") {
-        for (let i = 0; i < group.count; i++) spawnBoss();
-      } else if (group.type === "mini-boss") {
-        for (let i = 0; i < group.count; i++) spawnMiniBoss();
-      }
+      if (group.type === "normal") spawnEnemies(group.count);
+      else if (group.type === "triangle") spawnTriangleEnemies(group.count);
+      else if (group.type === "boss") for (let i = 0; i < group.count; i++) spawnBoss();
+      else if (group.type === "mini-boss") for (let i = 0; i < group.count; i++) spawnMiniBoss();
     });
   }
-}
-
-  // Spawn enemies
-if (waveData.enemies) {
-  waveData.enemies.forEach(group => {
-    if (group.type === "normal") spawnEnemies(group.count);
-    else if (group.type === "triangle") spawnTriangleEnemies(group.count);
-    else if (group.type === "boss") for (let i = 0; i < group.count; i++) spawnBoss();
-    else if (group.type === "mini-boss") for (let i = 0; i < group.count; i++) spawnMiniBoss();
-  });
 }
 
 function nextWave() {
@@ -517,5 +489,5 @@ function gameLoop() {
 }
 
 // ======== Start Game ========
-spawnWave(wave - 1); // first wave
+spawnWave(wave - 1);
 gameLoop();
