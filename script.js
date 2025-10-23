@@ -1,270 +1,526 @@
-// ================== GAME SETUP ==================
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-canvas.width = 800;
-canvas.height = 600;
 
+// ======== Setup ========
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// ======== Game Variables ========
 let keys = {};
-let shootKeys = {};
-
-document.addEventListener("keydown", e => {
-  if (!keys[e.code]) {
-    keys[e.code] = true;
-    shootKeys[e.code] = true; // Track new key press for shooting
-  }
-});
-
-document.addEventListener("keyup", e => {
-  keys[e.code] = false;
-  shootKeys[e.code] = false;
-});
-let player = { x: 100, y: canvas.height / 2, w: 30, h: 30, color: "cyan", speed: 5, hp: 3 };
 let bullets = [];
 let enemies = [];
-let enemyBullets = [];
-let wave = 1;
+let lightning = [];
+let explosions = [];
 let score = 0;
-let tunnel = null;
-let miniBoss = null;
-let gameOver = false;
-let lastShotTime = 0;
+let wave = 1;
+let minionsToAdd = [];
+let tunnels = [];
 
-const shootCooldown = 200; // milliseconds
+let lastDir = { x: 1, y: 0 };
+let canShoot = true;
+let highScores = JSON.parse(localStorage.getItem("highScores")) || [];
 
-// ================== UTILITIES ==================
-function rectsCollide(a, b) {
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+let player = {
+  x: canvas.width / 2,
+  y: canvas.height / 2,
+  size: 30,
+  speed: 5,
+  health: 100
+};
+
+// ======== Controls ========
+document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+// ======== Shoot ========
+function shoot() {
+  let dx = lastDir.x;
+  let dy = lastDir.y;
+  const mag = Math.hypot(dx, dy) || 1;
+  dx /= mag;
+  dy /= mag;
+  bullets.push({
+    x: player.x,
+    y: player.y,
+    size: 6,
+    dx: dx * 10,
+    dy: dy * 10
+  });
 }
 
-// ================== PLAYER ==================
-function updatePlayer() {
-  if (keys["KeyW"]) player.y -= player.speed;
-  if (keys["KeyS"]) player.y += player.speed;
-  if (keys["KeyA"]) player.x -= player.speed;
-  if (keys["KeyD"]) player.x += player.speed;
-
-  player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
-  player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
-
-  handleShooting();
-}
-
-// ================== SHOOTING ==================
-function handleShooting() {
-  const now = Date.now();
-
-  if (now - lastShotTime < shootCooldown) return;
-
-  let dirX = 0, dirY = 0;
-
-  if (shootKeys["ArrowUp"]) dirY = -1;
-  if (shootKeys["ArrowDown"]) dirY = 1;
-  if (shootKeys["ArrowLeft"]) dirX = -1;
-  if (shootKeys["ArrowRight"]) dirX = 1;
-
-  if (dirX !== 0 || dirY !== 0) {
-    const len = Math.sqrt(dirX * dirX + dirY * dirY);
-    dirX /= len;
-    dirY /= len;
-
-    bullets.push({
-      x: player.x + player.w / 2 - 2,
-      y: player.y + player.h / 2 - 2,
-      w: 6,
-      h: 6,
-      color: "white",
-      speed: 7,
-      dirX,
-      dirY
+// ======== Enemy Spawning ========
+function spawnEnemies(count) {
+  for (let i = 0; i < count; i++) {
+    enemies.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * (canvas.height / 2),
+      size: 30,
+      speed: 2,
+      health: 30,
+      type: "normal",
+      shootTimer: 0
     });
-
-    lastShotTime = now;
-
-    // Prevent multiple shots until key is released
-    for (let key in shootKeys) shootKeys[key] = false;
   }
 }
 
-// ================== BULLETS ==================
-function updateBullets() {
-  bullets.forEach((b, i) => {
-    b.x += b.dirX * b.speed;
-    b.y += b.dirY * b.speed;
-    if (b.x > canvas.width || b.x < 0 || b.y > canvas.height || b.y < 0) bullets.splice(i, 1);
-  });
+function spawnTriangleEnemies(count) {
+  for (let i = 0; i < count; i++) {
+    enemies.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * (canvas.height / 2),
+      size: 30,
+      speed: 1.5,
+      health: 40,
+      type: "triangle",
+      shootTimer: 0
+    });
+  }
+}
 
-  enemyBullets.forEach((b, i) => {
-    b.x -= b.speed;
-    if (rectsCollide(b, player)) {
-      enemyBullets.splice(i, 1);
-      player.hp--;
-      if (player.hp <= 0) gameOver = true;
-    }
-    if (b.x + b.w < 0) enemyBullets.splice(i, 1);
+function spawnBoss() {
+  enemies.push({
+    x: canvas.width / 2,
+    y: 100,
+    size: 150,
+    health: 1000,
+    type: "boss"
   });
 }
 
-// ================== ENEMIES ==================
-function spawnEnemies() {
-  if (enemies.length === 0 && !tunnel && !miniBoss) {
-    wave++;
+function spawnMiniBoss() {
+  enemies.push({
+    x: canvas.width / 2,
+    y: 120,
+    size: 80,
+    health: 500,
+    type: "mini-boss"
+  });
+}
 
-    if (wave === 6) {
-      tunnel = {
-        x: canvas.width,
-        speed: 2,
-        walls: [
-          { y: 0, h: 150, color: "purple" },
-          { y: 450, h: 150, color: "purple" }
-        ]
-      };
-      miniBoss = { x: canvas.width - 100, y: canvas.height / 2 - 40, w: 80, h: 80, color: "yellow", hp: 20, fireRate: 60, fireTimer: 0 };
-      for (let i = 0; i < 6; i++) {
-        enemies.push({ x: canvas.width + Math.random() * 200, y: Math.random() * (canvas.height - 40), w: 30, h: 30, color: "red", speed: 2 });
-      }
-      return;
-    }
+// ======== Boss Logic ========
+function updateBoss(boss) {
+  boss.angle = boss.angle || 0;
+  boss.angle += 0.01;
+  boss.x = canvas.width / 2 + Math.cos(boss.angle) * 150;
+  boss.y = 80 + Math.sin(boss.angle) * 50;
 
-    if (wave === 7) {
-      enemies.push({ x: canvas.width - 120, y: canvas.height / 2 - 50, w: 100, h: 100, color: "magenta", speed: 1.5, hp: 40, boss: true });
-      return;
-    }
+  boss.spawnTimer = boss.spawnTimer || 0;
+  boss.spawnTimer++;
+  if (boss.spawnTimer > 200) {
+    boss.spawnTimer = 0;
+    minionsToAdd.push({
+      x: boss.x + (Math.random() - 0.5) * 100,
+      y: boss.y + (Math.random() - 0.5) * 100,
+      size: 30,
+      speed: 2,
+      health: 30,
+      type: "normal",
+      shootTimer: 0
+    });
+  }
 
-    // Regular enemies
-    for (let i = 0; i < wave * 3; i++) {
-      enemies.push({
-        x: canvas.width + Math.random() * 200,
-        y: Math.random() * (canvas.height - 40),
-        w: 30, h: 30,
-        color: wave % 2 === 0 ? "orange" : "red",
-        speed: 2,
-        hp: 10
+  boss.shootTimer = boss.shootTimer || 0;
+  boss.shootTimer++;
+  if (boss.shootTimer > 150) {
+    boss.shootTimer = 0;
+    let dirs = [
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 1, y: 0 }
+    ];
+    dirs.forEach(d => {
+      lightning.push({
+        x: boss.x,
+        y: boss.y,
+        dx: d.x * 5,
+        dy: d.y * 5,
+        size: 6,
+        damage: 20
       });
+    });
+  }
+}
+
+function updateMiniBoss(boss) {
+  boss.angle = boss.angle || 0;
+  boss.angle += 0.02;
+  boss.x = canvas.width / 2 + Math.cos(boss.angle) * 100;
+  boss.y = 80 + Math.sin(boss.angle) * 30;
+
+  boss.spawnTimer = boss.spawnTimer || 0;
+  boss.spawnTimer++;
+  if (boss.spawnTimer > 300) {
+    boss.spawnTimer = 0;
+    minionsToAdd.push({
+      x: boss.x + (Math.random() - 0.5) * 80,
+      y: boss.y + (Math.random() - 0.5) * 80,
+      size: 25,
+      speed: 2,
+      health: 30,
+      type: "normal",
+      shootTimer: 0
+    });
+  }
+
+  boss.shootTimer = boss.shootTimer || 0;
+  boss.shootTimer++;
+  if (boss.shootTimer > 180) {
+    boss.shootTimer = 0;
+    let dirs = [
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 1, y: 0 }
+    ];
+    dirs.forEach(d => {
+      lightning.push({
+        x: boss.x,
+        y: boss.y,
+        dx: d.x * 5,
+        dy: d.y * 5,
+        size: 6,
+        damage: 10
+      });
+    });
+  }
+}
+
+// ======== Explosions ========
+function createExplosion(x, y, color = "red") {
+  for (let i = 0; i < 20; i++) {
+    explosions.push({
+      x: x,
+      y: y,
+      dx: (Math.random() - 0.5) * 6,
+      dy: (Math.random() - 0.5) * 6,
+      radius: Math.random() * 4 + 2,
+      color: color,
+      life: 30
+    });
+  }
+}
+
+// ======== Movement ========
+function movePlayer() {
+  let newX = player.x;
+  let newY = player.y;
+
+  if (keys["w"] || keys["arrowup"]) { newY -= player.speed; lastDir = { x: 0, y: -1 }; }
+  if (keys["s"] || keys["arrowdown"]) { newY += player.speed; lastDir = { x: 0, y: 1 }; }
+  if (keys["a"] || keys["arrowleft"]) { newX -= player.speed; lastDir = { x: -1, y: 0 }; }
+  if (keys["d"] || keys["arrowright"]) { newX += player.speed; lastDir = { x: 1, y: 0 }; }
+
+  // Check tunnel collisions
+  let blocked = false;
+  for (const t of tunnels) {
+    if (
+      newX + player.size / 2 > t.x &&
+      newX - player.size / 2 < t.x + t.width &&
+      newY + player.size / 2 > t.y &&
+      newY - player.size / 2 < t.y + t.height
+    ) {
+      blocked = true;
+      player.health -= 1;
+      createExplosion(player.x, player.y, "cyan");
+      break;
+    }
+  }
+
+  if (!blocked) {
+    player.x = newX;
+    player.y = newY;
+  }
+}
+
+let shootKeys = {};
+document.addEventListener("keydown", e => {
+  if (["arrowup","arrowdown","arrowleft","arrowright"].includes(e.key.toLowerCase())) {
+    shootKeys[e.key.toLowerCase()] = true;
+  }
+});
+document.addEventListener("keyup", e => {
+  if (["arrowup","arrowdown","arrowleft","arrowright"].includes(e.key.toLowerCase())) {
+    shootKeys[e.key.toLowerCase()] = false;
+  }
+});
+
+function handleShooting() {
+  let dirX = 0;
+  let dirY = 0;
+
+  if (keys["arrowup"]) dirY = -1;
+  if (keys["arrowdown"]) dirY = 1;
+  if (keys["arrowleft"]) dirX = -1;
+  if (keys["arrowright"]) dirX = 1;
+
+  if ((dirX !== 0 || dirY !== 0) && canShoot) {
+    const mag = Math.hypot(dirX, dirY) || 1;
+    bullets.push({
+      x: player.x,
+      y: player.y,
+      size: 6,
+      dx: (dirX / mag) * 10,
+      dy: (dirY / mag) * 10
+    });
+    canShoot = false;
+
+    // Reset shooting when all arrow keys released
+    setTimeout(() => {
+      if (!keys["arrowup"] && !keys["arrowdown"] && !keys["arrowleft"] && !keys["arrowright"]) {
+        canShoot = true;
+      }
+    }, 50);
+  }
+}
+
+function updateBullets() {
+  bullets = bullets.filter(b => {
+    b.x += b.dx;
+    b.y += b.dy;
+    return b.x >= 0 && b.x <= canvas.width && b.y >= 0 && b.y <= canvas.height;
+  });
+}
+
+// ======== Tunnel Logic (FIXED) ========
+function spawnTunnel() {
+  const wallHeight = canvas.height / 3;
+  const wallWidth = 600; // ✅ Longer tunnel
+
+  const topWall = { x: canvas.width, y: 0, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true };
+  const bottomWall = { x: canvas.width, y: canvas.height - wallHeight, width: wallWidth, height: wallHeight, speed: 2, damage: 30, active: true };
+
+  tunnels.push(topWall, bottomWall);
+
+  return { x: canvas.width, y: wallHeight, width: wallWidth, gapY: wallHeight };
+}
+
+function updateTunnels() {
+  for (let i = tunnels.length - 1; i >= 0; i--) {
+    const t = tunnels[i];
+    if (!t.active) continue;
+
+    t.x -= t.speed;
+    ctx.fillStyle = "rgba(0, 255, 255, 0.5)";
+    ctx.fillRect(t.x, t.y, t.width, t.height);
+
+    if (t.x + t.width < 0) {
+      tunnels.splice(i, 1);
     }
   }
 }
 
+// ======== Enemy Logic ========
 function updateEnemies() {
-  enemies.forEach((e, i) => {
-    e.x -= e.speed;
+  enemies = enemies.filter(e => {
+    if (e.type === "boss") updateBoss(e);
+    else if (e.type === "mini-boss") updateMiniBoss(e);
+    else {
+      const dx = player.x - e.x;
+      const dy = player.y - e.y;
+      const dist = Math.hypot(dx, dy);
+      e.x += (dx / dist) * e.speed;
+      e.y += (dy / dist) * e.speed;
 
-    if (rectsCollide(e, player)) {
-      enemies.splice(i, 1);
-      player.hp--;
-      if (player.hp <= 0) gameOver = true;
-    }
-
-    bullets.forEach((b, j) => {
-      if (rectsCollide(b, e)) {
-        bullets.splice(j, 1);
-        e.hp -= 10;
-        if (e.hp <= 0) {
-          enemies.splice(i, 1);
-          score += e.boss ? 100 : 10;
+      if (e.type === "triangle") {
+        e.shootTimer++;
+        if (e.shootTimer > 100) {
+          e.shootTimer = 0;
+          lightning.push({
+            x: e.x,
+            y: e.y,
+            dx: (dx / dist) * 5,
+            dy: (dy / dist) * 5,
+            size: 6,
+            damage: 15
+          });
         }
       }
-    });
-
-    if (e.x + e.w < 0) enemies.splice(i, 1);
-  });
-}
-
-// ================== MINI-BOSS ==================
-function updateMiniBoss() {
-  if (!miniBoss) return;
-
-  miniBoss.fireTimer++;
-  if (miniBoss.fireTimer >= miniBoss.fireRate) {
-    miniBoss.fireTimer = 0;
-    enemyBullets.push({ x: miniBoss.x, y: miniBoss.y + miniBoss.h / 2 - 4, w: 8, h: 8, color: "red", speed: 5 });
-  }
-
-  bullets.forEach((b, j) => {
-    if (rectsCollide(b, miniBoss)) {
-      bullets.splice(j, 1);
-      miniBoss.hp--;
-      if (miniBoss.hp <= 0) {
-        miniBoss = null;
-        score += 100;
+      if (dist < (player.size / 2 + e.size / 2)) {
+        player.health -= (e.type === "triangle" ? 25 : 15);
+        createExplosion(e.x, e.y, e.type === "triangle" ? "cyan" : "red");
+        return false;
       }
     }
+    return true;
   });
 
-  ctx.fillStyle = miniBoss.color;
-  ctx.fillRect(miniBoss.x, miniBoss.y, miniBoss.w, miniBoss.h);
-}
-
-// ================== TUNNEL ==================
-function updateTunnel() {
-  if (!tunnel) return;
-  tunnel.x -= tunnel.speed;
-
-  tunnel.walls.forEach(wall => {
-    ctx.fillStyle = wall.color;
-    ctx.fillRect(tunnel.x, wall.y, 300, wall.h);
-
-    if (player.x + player.w > tunnel.x && player.x < tunnel.x + 300) {
-      if (player.y < wall.y + wall.h && player.y + player.h > wall.y) {
-        player.hp--;
-        if (player.hp <= 0) gameOver = true;
-      }
-    }
-  });
-
-  if (tunnel.x + 300 < 0) {
-    tunnel = null;
-    miniBoss = null;
+  if (minionsToAdd.length > 0) {
+    enemies.push(...minionsToAdd);
+    minionsToAdd = [];
   }
 }
 
-// ================== DRAW ==================
-function draw() {
-  ctx.fillStyle = "black";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = player.color;
-  ctx.fillRect(player.x, player.y, player.w, player.h);
-
-  bullets.forEach(b => {
-    ctx.fillStyle = b.color;
-    ctx.fillRect(b.x, b.y, b.w, b.h);
+// ======== Lightning ========
+function updateLightning() {
+  lightning = lightning.filter(l => {
+    l.x += l.dx;
+    l.y += l.dy;
+    if (Math.hypot(l.x - player.x, l.y - player.y) < player.size / 2) {
+      player.health -= l.damage;
+      return false;
+    }
+    return l.x >= 0 && l.x <= canvas.width && l.y >= 0 && l.y <= canvas.height;
   });
+}
 
+// ======== Bullet Collisions ========
+function checkBulletCollisions() {
+  for (let bi = bullets.length - 1; bi >= 0; bi--) {
+    const b = bullets[bi];
+    for (let ei = enemies.length - 1; ei >= 0; ei--) {
+      const e = enemies[ei];
+      if (Math.hypot(b.x - e.x, b.y - e.y) < e.size / 2) {
+        e.health -= 10;
+        bullets.splice(bi, 1);
+        if (e.health <= 0) {
+          createExplosion(e.x, e.y,
+            e.type === "triangle" ? "cyan" :
+            e.type === "boss" ? "yellow" :
+            e.type === "mini-boss" ? "orange" : "red"
+          );
+          enemies.splice(ei, 1);
+          score += (e.type === "boss" ? 100 : e.type === "mini-boss" ? 50 : 10);
+        }
+        break;
+      }
+    }
+  }
+}
+
+// ======== Explosions Update ========
+function updateExplosions() {
+  explosions = explosions.filter(ex => {
+    ctx.fillStyle = ex.color;
+    ctx.beginPath();
+    ctx.arc(ex.x, ex.y, ex.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ex.x += ex.dx;
+    ex.y += ex.dy;
+    ex.life--;
+    return ex.life > 0;
+  });
+}
+
+// ======== Drawing ========
+function drawPlayer() {
+  ctx.fillStyle = "lime";
+  ctx.fillRect(player.x - player.size / 2, player.y - player.size / 2, player.size, player.size);
+}
+
+function drawBullets() {
+  ctx.fillStyle = "yellow";
+  bullets.forEach(b => ctx.fillRect(b.x, b.y, b.size, b.size));
+}
+
+function drawEnemies() {
   enemies.forEach(e => {
-    ctx.fillStyle = e.color;
-    ctx.fillRect(e.x, e.y, e.w, e.h);
+    if (e.type === "normal") {
+      ctx.fillStyle = "red";
+      ctx.fillRect(e.x - e.size / 2, e.y - e.size / 2, e.size, e.size);
+    } else if (e.type === "triangle") {
+      ctx.fillStyle = "cyan";
+      ctx.beginPath();
+      ctx.moveTo(e.x, e.y - e.size / 2);
+      ctx.lineTo(e.x - e.size / 2, e.y + e.size / 2);
+      ctx.lineTo(e.x + e.size / 2, e.y + e.size / 2);
+      ctx.closePath();
+      ctx.fill();
+    } else if (e.type === "boss") {
+      ctx.fillStyle = "yellow";
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (e.type === "mini-boss") {
+      ctx.fillStyle = "orange";
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
   });
+}
 
-  enemyBullets.forEach(b => {
-    ctx.fillStyle = b.color;
-    ctx.fillRect(b.x, b.y, b.w, b.h);
-  });
+function drawLightning() {
+  ctx.fillStyle = "cyan";
+  lightning.forEach(l => ctx.fillRect(l.x, l.y, l.size, l.size));
+}
 
+function drawUI() {
   ctx.fillStyle = "white";
-  ctx.font = "16px Arial";
-  ctx.fillText("HP: " + player.hp, 10, 20);
-  ctx.fillText("Wave: " + wave, 10, 40);
-  ctx.fillText("Score: " + score, 10, 60);
+  ctx.font = "20px Arial";
+  ctx.fillText(`Score: ${score}`, 20, 30);
+  ctx.fillText(`Health: ${player.health}`, 20, 60);
+  ctx.fillText(`Wave: ${wave}`, 20, 90);
+}
 
-  if (gameOver) {
-    ctx.fillStyle = "red";
-    ctx.font = "40px Arial";
-    ctx.fillText("GAME OVER", canvas.width / 2 - 120, canvas.height / 2);
+// ======== Waves ========
+const waves = [
+  { enemies: [{ type: "normal", count: 3 }] },
+  { enemies: [{ type: "triangle", count: 2 }, { type: "normal", count: 3 }] },
+  { enemies: [{ type: "boss", count: 1 }] },
+  { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] },
+  { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] },
+  { tunnel: true, enemies: [{ type: "normal", count: 4 }, { type: "triangle", count: 2 }] },
+  { enemies: [{ type: "boss", count: 1 }] } // ✅ Wave 7 boss
+];
+
+function spawnWave(waveIndex) {
+  if (waveIndex >= waves.length) return;
+  const waveData = waves[waveIndex];
+
+  // Spawn tunnel if it exists
+  let gap = null;
+  if (waveData.tunnel) {
+    gap = spawnTunnel();
+  }
+
+  // Spawn enemies
+  if (waveData.enemies) {
+    waveData.enemies.forEach(group => {
+      if (group.type === "normal") spawnEnemies(group.count);
+      else if (group.type === "triangle") spawnTriangleEnemies(group.count);
+      else if (group.type === "boss") for (let i = 0; i < group.count; i++) spawnBoss();
+      else if (group.type === "mini-boss") for (let i = 0; i < group.count; i++) spawnMiniBoss();
+    });
   }
 }
 
-// ================== GAME LOOP ==================
-function loop() {
-  if (!gameOver) {
-    updatePlayer();
-    updateBullets();
-    updateEnemies();
-    updateMiniBoss();
-    updateTunnel();
-    spawnEnemies();
+function nextWave() {
+  if (enemies.length === 0 && tunnels.length === 0) {
+    spawnWave(wave - 1);
+    wave++;
   }
-  draw();
-  requestAnimationFrame(loop);
 }
 
-loop();
+// ======== Main Loop ========
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  movePlayer();
+  handleShooting();
+  updateBullets();
+  updateEnemies();
+  updateLightning();
+  checkBulletCollisions();
+  updateExplosions();
+  updateTunnels();
+  drawPlayer();
+  drawBullets();
+  drawEnemies();
+  drawLightning();
+  drawUI();
+  nextWave();
+
+  if (player.health > 0) {
+    requestAnimationFrame(gameLoop);
+  } else {
+    ctx.fillStyle = "white";
+    ctx.font = "50px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 150, canvas.height / 2);
+    ctx.font = "30px Arial";
+    ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 100, canvas.height / 2 + 50);
+  }
+}
+
+// ======== Start Game ========
+spawnWave(wave - 1);
+gameLoop();
