@@ -322,11 +322,10 @@ function updateTunnels() {
 // ======== Enemy Logic ========
 function updateEnemies() {
   enemies = enemies.filter(e => {
-    if (e.type === "boss") updateBoss(e);
-    else if (e.type === "mini-boss") updateMiniBoss(e);
-    else if (e.type === "reflector") {
-      e.angle += 0.1;
-      // reflect bullets handled in checkBulletCollisions
+    if (e.type === "boss") {
+      updateBoss(e);
+    } else if (e.type === "mini-boss") {
+      updateMiniBoss(e);
     } else {
       const dx = player.x - e.x;
       const dy = player.y - e.y;
@@ -334,6 +333,7 @@ function updateEnemies() {
       e.x += (dx / dist) * e.speed;
       e.y += (dy / dist) * e.speed;
 
+      // Triangle shooting behavior
       if (e.type === "triangle") {
         e.shootTimer++;
         if (e.shootTimer > 100) {
@@ -349,6 +349,28 @@ function updateEnemies() {
         }
       }
 
+      // Reflector behavior
+      if (e.type === "reflector") {
+        // Move toward closest player bullet
+        if (bullets.length > 0) {
+          let closestBullet = bullets.reduce((prev, curr) => {
+            const prevDist = Math.hypot(prev.x - e.x, prev.y - e.y);
+            const currDist = Math.hypot(curr.x - e.x, curr.y - e.y);
+            return currDist < prevDist ? curr : prev;
+          });
+
+          const dxBullet = closestBullet.x - e.x;
+          const dyBullet = closestBullet.y - e.y;
+          const distBullet = Math.hypot(dxBullet, dyBullet) || 1;
+          e.x += (dxBullet / distBullet) * e.speed;
+          e.y += (dyBullet / distBullet) * e.speed;
+        }
+
+        // Rotation for visual spinning
+        e.angle = (e.angle || 0) + 0.1;
+      }
+
+      // Player collision
       if (dist < (player.size / 2 + e.size / 2)) {
         player.health -= (e.type === "triangle" ? 25 : 15);
         createExplosion(e.x, e.y, e.type === "triangle" ? "cyan" : "red");
