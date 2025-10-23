@@ -245,7 +245,12 @@ document.addEventListener("keyup", e => {
   }
 });
 
+let shootCooldown = 0;
+
 function handleShooting() {
+  // Decrease cooldown each frame
+  if (shootCooldown > 0) shootCooldown--;
+
   let dirX = 0;
   let dirY = 0;
 
@@ -254,23 +259,17 @@ function handleShooting() {
   if (keys["arrowleft"]) dirX = -1;
   if (keys["arrowright"]) dirX = 1;
 
-  if ((dirX !== 0 || dirY !== 0) && canShoot) {
+  // Shoot if a direction is pressed and cooldown is 0
+  if ((dirX !== 0 || dirY !== 0) && shootCooldown === 0) {
     const mag = Math.hypot(dirX, dirY) || 1;
     bullets.push({
       x: player.x,
       y: player.y,
-      size: 6,
       dx: (dirX / mag) * 10,
-      dy: (dirY / mag) * 10
+      dy: (dirY / mag) * 10,
+      size: 6
     });
-    canShoot = false;
-
-    // Reset shooting when all arrow keys released
-    setTimeout(() => {
-      if (!keys["arrowup"] && !keys["arrowdown"] && !keys["arrowleft"] && !keys["arrowright"]) {
-        canShoot = true;
-      }
-    }, 50);
+    shootCooldown = 10; // Adjust fire rate: smaller = faster
   }
 }
 
