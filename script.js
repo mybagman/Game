@@ -459,8 +459,24 @@ const waves = [
   { enemies: [{ type: "boss", count: 1 }] },
   { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] },
   { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] },
-  { tunnel: true, enemies: [{ type: "normal", count: 4 }, { type: "triangle", count: 2 }] },
-  { enemies: [{ type: "boss", count: 1 }] } // ✅ Wave 7 boss
+
+  // Tunnel wave: many triangles + 1 mini-boss
+  { 
+    tunnel: true, 
+    enemies: [
+      { type: "triangle", count: 10 }, // more triangles
+      { type: "mini-boss", count: 1 },
+      { type: "normal", count: 4 }
+    ] 
+  },
+
+  // Wave after tunnel: 1 boss + 3 mini-boss
+  { 
+    enemies: [
+      { type: "boss", count: 1 },
+      { type: "mini-boss", count: 3 }
+    ] 
+  }
 ];
 
 function spawnWave(waveIndex) {
