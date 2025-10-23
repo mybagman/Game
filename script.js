@@ -800,11 +800,6 @@ function gameLoop() {
   drawExplosions();
   drawUI();
 
-  // spawn initial wave if at start
-  if (wave === 0 && enemies.length === 0 && diamonds.length === 0 && !waveTransition) {
-    spawnWave(wave);
-  }
-
   // try to advance when cleared
   tryAdvanceWave();
 
@@ -820,5 +815,13 @@ function gameLoop() {
 }
 
 // ======== Start Game ========
-spawnWave(wave);
+// Start first wave properly
+function startFirstWave() {
+  wave = 0;
+  waveTransition = false;
+  spawnWave(wave);
+}
+
+startFirstWave();
+gameLoop();
 gameLoop();
