@@ -501,8 +501,8 @@ function drawUI() {
 // ======== Waves ========
 const waves = [
   { enemies: [{ type: "normal", count: 3 }] },
-  { enemies: [{ type: "triangle", count: 2 }, { type: "normal", count: 3 }] },
-  { enemies: [{ type: "boss", count: 1 }, { type: "reflector", count: 3 }] }, // Added 3 reflectors
+  { enemies: [{ type: "triangle", count: 2 }, { type: "normal", count: 3 }, { type: "reflector", count: 1 }] }, // Added 1 reflector
+  { enemies: [{ type: "boss", count: 1 }] }, // Removed reflectors
   { enemies: [{ type: "triangle", count: 3 }, { type: "normal", count: 5 }] },
   { enemies: [{ type: "mini-boss", count: 1 }, { type: "normal", count: 3 }] },
   { 
