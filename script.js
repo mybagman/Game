@@ -104,7 +104,7 @@ function spawnReflector(x, y) {
     width: 40,
     height: 20,
     angle: 0,
-    speed: 3,   // <--- add speed
+    speed: 0.8,   // slower speed
     health: 200,
     type: "reflector"
   });
