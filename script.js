@@ -156,7 +156,7 @@ function updateBoss(boss) {
 }
 
 function updateMiniBoss(boss) {
-  boss.angle = boss.angle || 0;
+  boss.angle = boss.angle || Math.random() * Math.PI * 2;
   boss.angle += 0.02;
   boss.x = canvas.width / 2 + Math.cos(boss.angle) * 100;
   boss.y = 80 + Math.sin(boss.angle) * 30;
