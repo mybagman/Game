@@ -35,19 +35,6 @@ let player = {
   maxHealth: 100
 };
 
-let player = {
-    x: canvas.width / 2,
-    y: canvas.height / 2,
-    radius: 15,
-    speed: 5,
-    health: 100,
-    maxHealth: 100,
-    lives: 3,
-    invulnerable: false,
-    respawning: false,
-    glowTime: 0
-};
-
 // ======== Controls ========
 document.addEventListener("keydown", e => {
   keys[e.key.toLowerCase()] = true;
@@ -602,20 +589,7 @@ function updateExplosions() {
 function drawPlayer() {
   ctx.fillStyle = "lime";
   ctx.fillRect(player.x - player.size / 2, player.y - player.size / 2, player.size, player.size);
-// ======== Player Drawing (with glow) ========
-if (player.invulnerable && Date.now() < player.glowTime) {
-    ctx.shadowColor = "rgba(255, 255, 0, 0.7)";
-    ctx.shadowBlur = 15;
-} else {
-    ctx.shadowBlur = 0;
 }
-
-ctx.beginPath();
-ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-ctx.fillStyle = player.invulnerable ? "rgba(255, 255, 255, 0.8)" : "cyan";
-ctx.fill();
-ctx.closePath();
-ctx.shadowBlur = 0;
 function drawBullets() {
   ctx.fillStyle = "yellow";
   bullets.forEach(b => ctx.fillRect(b.x - b.size/2, b.y - b.size/2, b.size, b.size));
@@ -711,7 +685,6 @@ function drawUI() {
   ctx.fillRect(20, 20, 200 * Math.max(0, player.health / player.maxHealth), 20);
   ctx.strokeStyle = "black";
   ctx.strokeRect(20, 20, 200, 20);
-  ctx.fillText(`Lives: ${player.lives}`, 20, 100);
 
   // Score & Wave
   ctx.fillStyle = "white";
@@ -830,33 +803,15 @@ function gameLoop() {
   // try to advance when cleared
   tryAdvanceWave();
 
-  // ======== Player Life System ========
-if (player.health <= 0 && !player.respawning) {
-    player.lives--;
-    explosions.push({
-        x: player.x,
-        y: player.y,
-        radius: 20,
-        alpha: 1
-    });
-
-    if (player.lives > 0) {
-        player.respawning = true;
-        player.invulnerable = true;
-        player.health = player.maxHealth;
-        player.x = canvas.width / 2;
-        player.y = canvas.height / 2;
-
-        // Temporary glow to represent invulnerability
-        player.glowTime = Date.now() + 2000;
-
-        setTimeout(() => {
-            player.invulnerable = false;
-            player.respawning = false;
-        }, 2000);
-    } else {
-        gameOver = true;
-    }
+  if (player.health > 0) {
+    requestAnimationFrame(gameLoop);
+  } else {
+    ctx.fillStyle = "white";
+    ctx.font = "50px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 150, canvas.height / 2);
+    ctx.font = "30px Arial";
+    ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 100, canvas.height / 2 + 50);
+  }
 }
 
 // ======== Start Game ========
@@ -864,3 +819,8 @@ if (player.health <= 0 && !player.respawning) {
 function startFirstWave() {
   wave = 0;
   waveTransition = false;
+  spawnWave(wave);
+}
+
+startFirstWave();
+gameLoop();
