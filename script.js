@@ -27,15 +27,6 @@ let waveTransitionTimer = 0;
 const WAVE_BREAK_MS = 2500; // 2.5 seconds between waves
 
 let player = {
-  x: canvas.width / 2,
-  y: canvas.height / 2,
-  size: 30,
-  speed: 5,
-  health: 100,
-  maxHealth: 100
-};
-
-let player = {
     x: canvas.width / 2,
     y: canvas.height / 2,
     radius: 15,
