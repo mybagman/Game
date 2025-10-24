@@ -607,6 +607,7 @@ ctx.fillStyle = player.invulnerable ? "rgba(255, 255, 255, 0.8)" : "cyan";
 ctx.fill();
 ctx.closePath();
 ctx.shadowBlur = 0;
+}
 function drawBullets() {
   ctx.fillStyle = "yellow";
   bullets.forEach(b => ctx.fillRect(b.x - b.size/2, b.y - b.size/2, b.size, b.size));
