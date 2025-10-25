@@ -18,3 +18,7 @@ diamond = assimalates other enemies to form an unstoppable foe.
 
 the link:
 https://mybagman.github.io/Game/
+
+hosted on claude:
+https://claude.ai/public/artifacts/a8151cc3-e4a7-4e65-8ebd-4371679d369e
+
