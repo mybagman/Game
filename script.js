@@ -33,86 +33,141 @@ function respawnGoldStar() {
 }
 
 // =============================================
-// GOLD STAR AI: Evasion + Tactical Positioning
+// =============================================
+// GOLD STAR AI: Power-Up Snap + Smooth Orbit
 // =============================================
 function updateGoldStarAI() {
   if (!goldStar.alive) return;
 
   // === CONFIG ===
-  const AVOID_RADIUS = 300;      // detection range for danger
-  const AVOID_FORCE = 0.6;       // strength of avoidance
-  const STAY_CLOSE_RADIUS = 200; // ideal distance from player
-  const ORBIT_SPEED = 0.04;      // orbiting movement speed
-  const MOVE_SPEED = 4;          // overall movement speed
-  const HOVER_AMPLITUDE = 0.5;   // gentle idle drift
+  const AVOID_RADIUS = 300;       // detect enemies/bullets
+  const AVOID_FORCE = 3.0;        // strength of avoidance
+  const PREDICT_TIME = 20;        // frames ahead for bullet prediction
+  const MOVE_SPEED = 4;           // base movement speed
+  const ORBIT_RADIUS_MIN = 80;    // tight orbit when danger is high
+  const ORBIT_RADIUS_MAX = 200;   // wide orbit when safe
+  const ORBIT_SPEED = 0.03;       // orbit angular speed
+  const POWERUP_RADIUS = 400;     // detect power-ups
+  const SNAP_DISTANCE = 15;       // distance at which gold star snaps to power-up
+  const SAFE_MARGIN = 100;        // minimal safe distance from threats
+  const HOVER_AMPLITUDE = 0.5;    // small idle drift
+  const SPIRAL_FACTOR = 0.2;      // spiral strength toward power-ups
 
-  let vx = 0;
-  let vy = 0;
-  let threats = 0;
+  let vx = 0, vy = 0;
+  let threatCount = 0;
+  let targetPowerUp = null;
 
-  // === STEP 1: Avoid Enemies ===
+  // === STEP 1: Avoid enemies ===
   for (let e of enemies) {
     if (!e.alive) continue;
     const dx = goldStar.x - e.x;
     const dy = goldStar.y - e.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
+    const dist = Math.sqrt(dx*dx + dy*dy);
     if (dist < AVOID_RADIUS && dist > 0) {
-      vx += dx / dist;
-      vy += dy / dist;
-      threats++;
+      vx += (dx / dist) * AVOID_FORCE;
+      vy += (dy / dist) * AVOID_FORCE;
+      threatCount++;
     }
   }
 
-  // === STEP 2: Avoid Enemy Bullets ===
+  // === STEP 2: Predictive dodge for enemy bullets ===
   for (let b of bullets) {
     if (b.owner !== "enemy") continue;
-    const dx = goldStar.x - b.x;
-    const dy = goldStar.y - b.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
+    const futureX = b.x + b.vx * PREDICT_TIME;
+    const futureY = b.y + b.vy * PREDICT_TIME;
+    const dx = goldStar.x - futureX;
+    const dy = goldStar.y - futureY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
     if (dist < AVOID_RADIUS && dist > 0) {
-      vx += dx / dist;
-      vy += dy / dist;
-      threats++;
+      vx += (dx / dist) * AVOID_FORCE;
+      vy += (dy / dist) * AVOID_FORCE;
+      threatCount++;
     }
   }
 
-  // === STEP 3: Tactical Movement Near Player ===
-  const dxToPlayer = player.x - goldStar.x;
-  const dyToPlayer = player.y - goldStar.y;
-  const distToPlayer = Math.sqrt(dxToPlayer * dxToPlayer + dyToPlayer * dyToPlayer);
+  // === STEP 3: Find nearest safe power-up ===
+  let nearestDist = Infinity;
+  for (let p of powerUps) {
+    if (!p.active) continue;
+    const dx = p.x - goldStar.x;
+    const dy = p.y - goldStar.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
 
-  if (threats > 0) {
-    // Normalize avoidance
-    vx /= threats;
-    vy /= threats;
-  } else {
-    // Orbit smoothly around player
-    const angle = Date.now() * ORBIT_SPEED;
-    const orbitX = player.x + Math.cos(angle) * STAY_CLOSE_RADIUS;
-    const orbitY = player.y + Math.sin(angle) * STAY_CLOSE_RADIUS;
+    // Check safety from enemies and bullets
+    let safe = true;
+    for (let e of enemies) {
+      const ex = e.x - goldStar.x;
+      const ey = e.y - goldStar.y;
+      if (Math.sqrt(ex*ex + ey*ey) < SAFE_MARGIN) safe = false;
+    }
+    for (let b of bullets) {
+      if (b.owner !== "enemy") continue;
+      const futureX = b.x + b.vx * PREDICT_TIME;
+      const futureY = b.y + b.vy * PREDICT_TIME;
+      const bx = futureX - goldStar.x;
+      const by = futureY - goldStar.y;
+      if (Math.sqrt(bx*bx + by*by) < SAFE_MARGIN) safe = false;
+    }
 
-    vx += orbitX - goldStar.x;
-    vy += orbitY - goldStar.y;
+    if (dist < nearestDist && safe) {
+      nearestDist = dist;
+      targetPowerUp = p;
+    }
   }
 
-  // === STEP 4: Apply Movement ===
-  const len = Math.sqrt(vx * vx + vy * vy);
+  // === STEP 4: Move toward power-up if available ===
+  if (targetPowerUp && nearestDist < POWERUP_RADIUS) {
+    const dx = targetPowerUp.x - goldStar.x;
+    const dy = targetPowerUp.y - goldStar.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    if (dist < SNAP_DISTANCE) {
+      // Snap to power-up
+      goldStar.x = targetPowerUp.x;
+      goldStar.y = targetPowerUp.y;
+      targetPowerUp.collect(); // Make sure your power-up object has a collect method
+    } else {
+      // Smooth spiral approach
+      vx += (dx / dist) * 1.5;
+      vy += (dy / dist) * 1.5;
+      vx += -dy / dist * SPIRAL_FACTOR;
+      vy += dx / dist * SPIRAL_FACTOR;
+    }
+    threatCount++;
+  }
+
+  // === STEP 5: Orbit player if no target power-up ===
+  if (!goldStar.orbitAngle) goldStar.orbitAngle = Math.random() * Math.PI * 2;
+  goldStar.orbitAngle += ORBIT_SPEED;
+
+  const ORBIT_RADIUS = ORBIT_RADIUS_MAX - (threatCount / 5) * (ORBIT_RADIUS_MAX - ORBIT_RADIUS_MIN);
+  const clampedOrbitRadius = Math.max(ORBIT_RADIUS_MIN, Math.min(ORBIT_RADIUS_MAX, ORBIT_RADIUS));
+
+  if (!targetPowerUp) {
+    const orbitX = player.x + Math.cos(goldStar.orbitAngle) * clampedOrbitRadius;
+    const orbitY = player.y + Math.sin(goldStar.orbitAngle) * clampedOrbitRadius;
+    vx += (orbitX - goldStar.x) * 0.5;
+    vy += (orbitY - goldStar.y) * 0.5;
+  } else if (threatCount > 0) {
+    vx /= threatCount;
+    vy /= threatCount;
+  }
+
+  // === STEP 6: Apply movement ===
+  const len = Math.sqrt(vx*vx + vy*vy);
   if (len > 0) {
     vx /= len;
     vy /= len;
     goldStar.x += vx * MOVE_SPEED;
     goldStar.y += vy * MOVE_SPEED;
   } else {
-    // Idle hover motion
-    goldStar.x += Math.sin(Date.now() / 300) * HOVER_AMPLITUDE;
-    goldStar.y += Math.cos(Date.now() / 400) * HOVER_AMPLITUDE;
+    goldStar.x += Math.sin(Date.now()/300) * HOVER_AMPLITUDE;
+    goldStar.y += Math.cos(Date.now()/400) * HOVER_AMPLITUDE;
   }
 
-  // === STEP 5: Keep Gold Star inside canvas ===
-  goldStar.x = Math.max(goldStar.size / 2, Math.min(canvas.width - goldStar.size / 2, goldStar.x));
-  goldStar.y = Math.max(goldStar.size / 2, Math.min(canvas.height - goldStar.size / 2, goldStar.y));
+  // === STEP 7: Keep inside canvas ===
+  goldStar.x = Math.max(goldStar.size/2, Math.min(canvas.width - goldStar.size/2, goldStar.x));
+  goldStar.y = Math.max(goldStar.size/2, Math.min(canvas.height - goldStar.size/2, goldStar.y));
 }
 
 function respawnPlayer() {
