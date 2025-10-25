@@ -33,19 +33,12 @@ function respawnGoldStar() {
   goldStar.collectTimer = 0; goldStar.targetPowerUp = null; goldStar.respawnTimer = 0;
 }
 
-// NOTE: There are two Gold Star update functions in this file: updateGoldStarAI() and updateGoldStar().
-// The game loop must call the one that matches the rest of the game's data structures (powerUps, bullets, etc).
-// The original bug: gameLoop was calling updateGoldStarAI() which expects different properties (e.g. p.active, b.vx/b.vy, e.alive).
-// Those properties don't exist on the objects produced by the rest of the code, so the AI never targeted powerups, detected collisions, or respawned correctly.
-// The fix is to call updateGoldStar() (which uses the same shapes: powerUps with lifetime, bullets with dx/dy, etc).
-// Below is the rest of the file unchanged except the gameLoop now calls updateGoldStar().
-
 function updateGoldStarAI() {
     if (!goldStar.alive) return;
 
     const MOVE_SPEED = 5;
-    const DANGER_RADIUS = 200;      // detect threats before too close
-    const SAFE_DIST = 120;           // minimal safe distance from enemies/bullets
+    const DANGER_RADIUS = 200;
+    const SAFE_DIST = 120;
     const POWERUP_RADIUS = 400;
     const SNAP_DISTANCE = 25;
     const FOLLOW_DIST = 150;
@@ -68,7 +61,7 @@ function updateGoldStarAI() {
         }
     }
 
-    // === STEP 1b: Avoid enemy bullets (predictive) ===
+    // === STEP 1b: Avoid bullets ===
     for (let b of bullets) {
         if (b.owner !== "enemy") continue;
         const futureX = b.x + b.vx * PREDICT_TIME;
@@ -84,35 +77,17 @@ function updateGoldStarAI() {
         }
     }
 
-    // === STEP 2: Move toward nearest safe power-up if no threat ===
+    // === STEP 2: Target nearest safe power-up ===
     let nearestPowerUp = null;
+    let nearestDist = Infinity;
     if (!threatDetected) {
-        let nearestDist = Infinity;
-
         for (let p of powerUps) {
             if (!p.active) continue;
             const dx = p.x - goldStar.x;
             const dy = p.y - goldStar.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
 
-            // safety check around power-up
-            let safe = true;
-            for (let e of enemies) {
-                if (!e.alive) continue;
-                const ex = e.x - p.x;
-                const ey = e.y - p.y;
-                if (Math.sqrt(ex*ex + ey*ey) < SAFE_DIST) safe = false;
-            }
-            for (let b of bullets) {
-                if (b.owner !== "enemy") continue;
-                const futureX = b.x + b.vx * PREDICT_TIME;
-                const futureY = b.y + b.vy * PREDICT_TIME;
-                const bx = futureX - p.x;
-                const by = futureY - p.y;
-                if (Math.sqrt(bx*bx + by*by) < SAFE_DIST) safe = false;
-            }
-
-            if (safe && dist < nearestDist && dist < POWERUP_RADIUS) {
+            if (dist < nearestDist && dist < POWERUP_RADIUS) {
                 nearestDist = dist;
                 nearestPowerUp = p;
             }
@@ -135,15 +110,16 @@ function updateGoldStarAI() {
         }
     }
 
-    // === STEP 3: Follow player if safe and no nearby power-up ===
-    if (!threatDetected && nearestPowerUp == null) {
+    // === STEP 3: Follow player if no power-up nearby ===
+    if (!threatDetected && (!nearestPowerUp || !nearestPowerUp.active)) {
         const dx = player.x - goldStar.x;
         const dy = player.y - goldStar.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
 
-        if (dist > FOLLOW_DIST && dist > 0) {
-            vx += (dx / dist) * 2;
-            vy += (dy / dist) * 2;
+        if (dist > 0) {
+            let speed = (dist > FOLLOW_DIST) ? 2 : 1; // move slower if close
+            vx += (dx / dist) * speed;
+            vy += (dy / dist) * speed;
         }
     }
 
