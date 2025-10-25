@@ -46,21 +46,21 @@ function updateGoldStarAI() {
     let vx = 0, vy = 0;
     let threatDetected = false;
 
-    // === STEP 1: Check all threats in range and add avoidance ===
+    // === STEP 1: Avoid enemies ===
     for (let e of enemies) {
         if (!e.alive) continue;
         const dx = goldStar.x - e.x;
         const dy = goldStar.y - e.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < DANGER_RADIUS) {
-            // stronger repulsion if closer
+        if (dist < DANGER_RADIUS && dist > 0) {
             const force = (DANGER_RADIUS - dist) / DANGER_RADIUS * 10;
             vx += (dx / dist) * force;
             vy += (dy / dist) * force;
-            if (dist < SAFE_DIST) threatDetected = true; // emergency flag
+            if (dist < SAFE_DIST) threatDetected = true;
         }
     }
 
+    // === STEP 1b: Avoid enemy bullets (predictive) ===
     for (let b of bullets) {
         if (b.owner !== "enemy") continue;
         const futureX = b.x + b.vx * PREDICT_TIME;
@@ -68,7 +68,7 @@ function updateGoldStarAI() {
         const dx = goldStar.x - futureX;
         const dy = goldStar.y - futureY;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < DANGER_RADIUS) {
+        if (dist < DANGER_RADIUS && dist > 0) {
             const force = (DANGER_RADIUS - dist) / DANGER_RADIUS * 12;
             vx += (dx / dist) * force;
             vy += (dy / dist) * force;
@@ -76,9 +76,9 @@ function updateGoldStarAI() {
         }
     }
 
-    // === STEP 2: Move toward nearest safe power-up only if no immediate threat ===
+    // === STEP 2: Move toward nearest safe power-up if no threat ===
+    let nearestPowerUp = null;
     if (!threatDetected) {
-        let nearestPowerUp = null;
         let nearestDist = Infinity;
 
         for (let p of powerUps) {
@@ -87,7 +87,7 @@ function updateGoldStarAI() {
             const dy = p.y - goldStar.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
 
-            // check safety around power-up
+            // safety check around power-up
             let safe = true;
             for (let e of enemies) {
                 if (!e.alive) continue;
@@ -118,22 +118,22 @@ function updateGoldStarAI() {
             if (dist < SNAP_DISTANCE) {
                 goldStar.x = nearestPowerUp.x;
                 goldStar.y = nearestPowerUp.y;
-                if (nearestPowerUp.collect) nearestPowerUp.collect();
+                if (typeof nearestPowerUp.collect === "function") nearestPowerUp.collect();
                 else nearestPowerUp.active = false;
-            } else {
-                vx += (dx / dist) * 3; // move toward power-up
+            } else if (dist > 0) {
+                vx += (dx / dist) * 3;
                 vy += (dy / dist) * 3;
             }
         }
     }
 
-    // === STEP 3: Follow player only if safe and no power-up nearby ===
+    // === STEP 3: Follow player if safe and no nearby power-up ===
     if (!threatDetected && nearestPowerUp == null) {
         const dx = player.x - goldStar.x;
         const dy = player.y - goldStar.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
 
-        if (dist > FOLLOW_DIST) {
+        if (dist > FOLLOW_DIST && dist > 0) {
             vx += (dx / dist) * 2;
             vy += (dy / dist) * 2;
         }
