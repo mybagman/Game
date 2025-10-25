@@ -31,8 +31,23 @@
       x: canvas.width/4, y: canvas.height/2, size: 35, speed: 3,
       health: 150, maxHealth: 150, alive: true, redPunchLevel: 0, blueCannonnLevel: 0,
       redKills: 0, blueKills: 0, punchCooldown: 0, cannonCooldown: 0,
-      collecting: false, collectTimer: 0, targetPowerUp: null
+      collecting: false, collectTimer: 0, targetPowerUp: null, respawnTimer: 0
     };
+
+    function respawnGoldStar() {
+      goldStar.x = canvas.width/4;
+      goldStar.y = canvas.height/2;
+      goldStar.health = goldStar.maxHealth;
+      goldStar.alive = true;
+      goldStar.redPunchLevel = 0;
+      goldStar.blueCannonnLevel = 0;
+      goldStar.redKills = 0;
+      goldStar.blueKills = 0;
+      goldStar.collecting = false;
+      goldStar.collectTimer = 0;
+      goldStar.targetPowerUp = null;
+      goldStar.respawnTimer = 0;
+    }
 
     document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
     document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
