@@ -122,6 +122,46 @@ function updateRedPunchEffects() {
   }
 }
 
+// Centralized red punch implementation so it's a named function and reliable
+function performRedPunch() {
+  // AoE radius scales with level
+  const baseRadius = 80;
+  const radius = baseRadius + (goldStar.redPunchLevel - 1) * 40;
+  // Deal damage to enemies in radius
+  let punches = Math.min(goldStar.redPunchLevel, 5);
+  const nearby = enemies
+    .map(e => ({e, d: Math.hypot(e.x - goldStar.x, e.y - goldStar.y)}))
+    .filter(o => o.d <= radius)
+    .sort((a,b) => a.d - b.d)
+    .slice(0, punches);
+  nearby.forEach(o => {
+    o.e.health -= 60;
+    createExplosion(o.e.x, o.e.y, "orange");
+    if (o.e.health <= 0) {
+      // award score and possibly spawn power-ups similar to normal kills
+      const idx = enemies.indexOf(o.e);
+      if (idx !== -1) {
+        const e = enemies[idx];
+        if (!e.fromBoss) {
+          if (e.type === "triangle") { score += 10; spawnPowerUp(e.x, e.y, "blue-cannon"); }
+          else if (e.type === "red-square") { score += 10; spawnPowerUp(e.x, e.y, "red-punch"); }
+          else if (e.type === "boss") score += 100;
+          else if (e.type === "mini-boss") score += 50;
+        }
+        // If the killed enemy is a reflector we also want to drop health
+        if (e.type === "reflector" && !e.fromBoss) {
+          // spawn the health power-up where it died
+          spawnPowerUp(e.x, e.y, "health");
+          score += 20;
+        }
+        enemies.splice(idx,1);
+      }
+    }
+  });
+  // Visual pulse
+  redPunchEffects.push({x: goldStar.x, y: goldStar.y, maxR: radius, r: 0, life: 30, maxLife: 30, color: "rgba(255,100,0,0.25)"});
+}
+
 function updateGoldStar() {
   if (!goldStar.alive) { goldStar.respawnTimer++; if (goldStar.respawnTimer >= 300) respawnGoldStar(); return; }
 
@@ -226,37 +266,7 @@ function updateGoldStar() {
     const FRAMES_PER_5S = 60 * 5; // assuming ~60fps
     if (goldStar.punchCooldown >= FRAMES_PER_5S) {
       goldStar.punchCooldown = 0;
-      // AoE radius scales with level
-      const baseRadius = 80;
-      const radius = baseRadius + (goldStar.redPunchLevel - 1) * 40;
-      // Deal damage to enemies in radius
-      let punches = Math.min(goldStar.redPunchLevel, 5);
-      // We'll pick up to `punches` nearest enemies in radius and damage them heavily.
-      const nearby = enemies
-        .map(e => ({e, d: Math.hypot(e.x - goldStar.x, e.y - goldStar.y)}))
-        .filter(o => o.d <= radius)
-        .sort((a,b) => a.d - b.d)
-        .slice(0, punches);
-      nearby.forEach(o => {
-        o.e.health -= 60;
-        createExplosion(o.e.x, o.e.y, "orange");
-        if (o.e.health <= 0) {
-          // award score and possibly spawn power-ups similar to normal kills
-          const idx = enemies.indexOf(o.e);
-          if (idx !== -1) {
-            const e = enemies[idx];
-            if (!e.fromBoss) {
-              if (e.type === "triangle") { score += 10; spawnPowerUp(e.x, e.y, "blue-cannon"); }
-              else if (e.type === "red-square") { score += 10; spawnPowerUp(e.x, e.y, "red-punch"); }
-              else if (e.type === "boss") score += 100;
-              else if (e.type === "mini-boss") score += 50;
-            }
-            enemies.splice(idx,1);
-          }
-        }
-      });
-      // Visual pulse
-      redPunchEffects.push({x: goldStar.x, y: goldStar.y, maxR: radius, r: 0, life: 30, maxLife: 30, color: "rgba(255,100,0,0.25)"});
+      performRedPunch();
     }
   }
 
@@ -490,7 +500,15 @@ function updateEnemies() {
       if (distToPlayer < 30) { if (!player.invulnerable) player.health -= 15; createExplosion(e.x, e.y, "magenta"); e.health -= 50; }
       const distToGoldStar = Math.hypot(e.x-goldStar.x, e.y-goldStar.y);
       if (goldStar.alive && distToGoldStar < 30) { goldStar.health -= 15; createExplosion(e.x, e.y, "magenta"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); } }
-      return e.health > 0;
+
+      // If reflector died here, spawn health pickup and award score
+      if (e.health <= 0) {
+        createExplosion(e.x, e.y, "purple");
+        if (!e.fromBoss) { score += 20; spawnPowerUp(e.x, e.y, "health"); }
+        return false;
+      }
+
+      return true;
     }
 
     return true;
@@ -546,7 +564,17 @@ function checkBulletCollisions() {
         const a = d.attachments[ai], radius = (a.size||20)/2 || 10;
         if (Math.hypot(b.x-a.x, b.y-a.y) < radius) {
           a.health = (a.health||30) - (b.owner === "player" ? 10 : 6); bullets.splice(bi,1);
-          if (a.health <= 0) { createExplosion(a.x, a.y, "white"); d.attachments.splice(ai,1); score += 5; if (!d.attachments.some(at => at.type === "reflector")) d.canReflect = false; }
+          if (a.health <= 0) {
+            createExplosion(a.x, a.y, "white");
+            // If the attachment that died was a reflector, spawn a health pickup
+            if (a.type === "reflector" && !a.fromBoss) {
+              spawnPowerUp(a.x, a.y, "health");
+              score += 20;
+            }
+            d.attachments.splice(ai,1);
+            score += 5;
+            if (!d.attachments.some(at => at.type === "reflector")) d.canReflect = false;
+          }
           ai = -1;
         }
       }
