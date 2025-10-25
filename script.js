@@ -935,11 +935,95 @@
         requestAnimationFrame(gameLoop);
       }
     }
+    
+    // ... (rest of the code for wave logic and functions)
 
-    wave = 0;
+    let waveTimer = 0;
+    
+    function startWave(index) {
+        wave = index;
+        waveTransition = true;
+        waveTimer = WAVE_BREAK_MS;
+
+        const currentWave = waves[wave % waves.length];
+        if (currentWave.tunnel) spawnTunnel();
+        currentWave.enemies.forEach(e => {
+            if (e.type === "red-square") spawnRedSquares(e.count);
+            else if (e.type === "triangle") spawnTriangles(e.count);
+            else if (e.type === "reflector") spawnReflectors(e.count);
+            else if (e.type === "boss") spawnBoss();
+            else if (e.type === "mini-boss") spawnMiniBoss();
+            else if (e.type === "diamond") spawnDiamondEnemy();
+        });
+    }
+
+    function checkWaveStatus() {
+        if (enemies.length === 0 && diamonds.length === 0 && waveTransition === false) {
+            waveTransition = true;
+            waveTimer = WAVE_BREAK_MS;
+        }
+
+        if (waveTransition) {
+            waveTimer -= (1000 / 60); // Assuming 60fps
+            if (waveTimer <= 0) {
+                waveTransition = false;
+                startWave(wave + 1);
+            }
+        }
+    }
+
+    function updateGame() {
+        handleShooting();
+        updateBullets();
+        updateEnemies();
+        updateLightning();
+        updateTunnels();
+        updatePowerUps();
+        updateGoldStar();
+        checkBulletCollisions();
+        checkWaveStatus();
+
+        // Player Death check
+        if (player.health <= 0) {
+            player.lives--;
+            if (player.lives > 0) {
+                respawnPlayer();
+            } else {
+                // Game Over logic here
+                console.log("Game Over!");
+                cancelAnimationFrame(animationFrameId); // Stop the loop
+            }
+        }
+    }
+
+    function drawGame() {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+
+        updateExplosions(); // Draws as it updates
+        drawDiamonds();
+        drawEnemies();
+        drawLightning();
+        drawBullets();
+        drawPlayer();
+        drawGoldStar();
+        drawUI();
+    }
+
+    let animationFrameId;
+
+    function gameLoop() {
+        updateGame();
+        drawGame();
+        animationFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    // Initialize and Start
+    startWave(0);
     waveTransition = false;
     spawnWave(wave);
-    gameLoop();
-  </script>
+    gameLoop(); 
+
+  </script>
 </body>
 </html>
