@@ -33,24 +33,22 @@ function respawnGoldStar() {
 }
 
 // =============================================
-// GOLD STAR AI: Dynamic Safe Orbit + Power-Up Collection
+// GOLD STAR AI: Smart Follow + Avoid + Collect
 // =============================================
 function updateGoldStarAI() {
     if (!goldStar.alive) return;
 
     // === CONFIG ===
     const MOVE_SPEED = 4;
+    const FOLLOW_DISTANCE = 150;  // how far to stay behind player
     const AVOID_RADIUS = 300;
-    const AVOID_FORCE = 6;
+    const AVOID_FORCE = 8;
     const PREDICT_TIME = 20;
     const POWERUP_RADIUS = 400;
-    const SNAP_DISTANCE = 20;
-    const ORBIT_RADIUS_MIN = 80;
-    const ORBIT_RADIUS_MAX = 200;
-    const ORBIT_SPEED = 0.03;
+    const SNAP_DISTANCE = 25;
     const SAFE_MARGIN = 100;
-    const HOVER_AMPLITUDE = 0.5;
     const SPIRAL_FACTOR = 0.2;
+    const HOVER_AMPLITUDE = 0.5;
 
     let avoidVX = 0, avoidVY = 0;
     let targetVX = 0, targetVY = 0;
@@ -134,24 +132,23 @@ function updateGoldStarAI() {
             targetVX += -dy / dist * SPIRAL_FACTOR;
             targetVY += dx / dist * SPIRAL_FACTOR;
         }
-        threatCount++; // prioritize power-up even if threats exist
+    } else {
+        // === STEP 5: Follow player safely ===
+        const dx = player.x - goldStar.x;
+        const dy = player.y - goldStar.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+
+        // Stay near but not on top of the player
+        if (dist > FOLLOW_DISTANCE) {
+            targetVX += (dx / dist) * 2;
+            targetVY += (dy / dist) * 2;
+        } else if (dist < FOLLOW_DISTANCE * 0.8) {
+            targetVX -= (dx / dist) * 1;
+            targetVY -= (dy / dist) * 1;
+        }
     }
 
-    // === STEP 5: Orbit player with dynamic radius ===
-    if (!goldStar.orbitAngle) goldStar.orbitAngle = Math.random() * Math.PI * 2;
-    goldStar.orbitAngle += ORBIT_SPEED;
-
-    // Adjust orbit radius based on threatCount
-    const orbitRadius = ORBIT_RADIUS_MAX - Math.min(threatCount / 5, 1) * (ORBIT_RADIUS_MAX - ORBIT_RADIUS_MIN);
-
-    if (!nearestPowerUp) {
-        const orbitX = player.x + Math.cos(goldStar.orbitAngle) * orbitRadius;
-        const orbitY = player.y + Math.sin(goldStar.orbitAngle) * orbitRadius;
-        targetVX += (orbitX - goldStar.x) * 0.5;
-        targetVY += (orbitY - goldStar.y) * 0.5;
-    }
-
-    // === STEP 6: Combine movement ===
+    // === STEP 6: Combine avoidance + target movement ===
     let finalVX = targetVX + avoidVX;
     let finalVY = targetVY + avoidVY;
 
