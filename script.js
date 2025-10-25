@@ -32,38 +32,35 @@ function respawnGoldStar() {
   goldStar.collectTimer = 0; goldStar.targetPowerUp = null; goldStar.respawnTimer = 0;
 }
 
-// =============================================
-// GOLD STAR AI: Priority-Based Avoid + Collect + Follow
-// =============================================
 function updateGoldStarAI() {
     if (!goldStar.alive) return;
 
     const MOVE_SPEED = 5;
-    const SAFE_DIST = 120;      // absolute minimal safe distance from enemies/bullets
+    const DANGER_RADIUS = 200;      // detect threats before too close
+    const SAFE_DIST = 120;           // minimal safe distance from enemies/bullets
     const POWERUP_RADIUS = 400;
     const SNAP_DISTANCE = 25;
     const FOLLOW_DIST = 150;
     const PREDICT_TIME = 20;
 
     let vx = 0, vy = 0;
+    let threatDetected = false;
 
-    // === STEP 1: Emergency avoidance (highest priority) ===
-    let danger = false;
-
-    // Enemies
+    // === STEP 1: Check all threats in range and add avoidance ===
     for (let e of enemies) {
         if (!e.alive) continue;
         const dx = goldStar.x - e.x;
         const dy = goldStar.y - e.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < SAFE_DIST) {
-            vx += (dx / dist) * 8; // strong repulsion
-            vy += (dy / dist) * 8;
-            danger = true;
+        if (dist < DANGER_RADIUS) {
+            // stronger repulsion if closer
+            const force = (DANGER_RADIUS - dist) / DANGER_RADIUS * 10;
+            vx += (dx / dist) * force;
+            vy += (dy / dist) * force;
+            if (dist < SAFE_DIST) threatDetected = true; // emergency flag
         }
     }
 
-    // Enemy bullets
     for (let b of bullets) {
         if (b.owner !== "enemy") continue;
         const futureX = b.x + b.vx * PREDICT_TIME;
@@ -71,15 +68,16 @@ function updateGoldStarAI() {
         const dx = goldStar.x - futureX;
         const dy = goldStar.y - futureY;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < SAFE_DIST) {
-            vx += (dx / dist) * 10; // even stronger repulsion
-            vy += (dy / dist) * 10;
-            danger = true;
+        if (dist < DANGER_RADIUS) {
+            const force = (DANGER_RADIUS - dist) / DANGER_RADIUS * 12;
+            vx += (dx / dist) * force;
+            vy += (dy / dist) * force;
+            if (dist < SAFE_DIST) threatDetected = true;
         }
     }
 
-    // === STEP 2: Move toward safe power-ups only if no danger ===
-    if (!danger) {
+    // === STEP 2: Move toward nearest safe power-up only if no immediate threat ===
+    if (!threatDetected) {
         let nearestPowerUp = null;
         let nearestDist = Infinity;
 
@@ -130,7 +128,7 @@ function updateGoldStarAI() {
     }
 
     // === STEP 3: Follow player only if safe and no power-up nearby ===
-    if (!danger) {
+    if (!threatDetected && nearestPowerUp == null) {
         const dx = player.x - goldStar.x;
         const dy = player.y - goldStar.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
