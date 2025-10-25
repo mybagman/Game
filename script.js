@@ -136,7 +136,13 @@
     }
 
     function updateGoldStar() {
-      if (!goldStar.alive) return;
+      if (!goldStar.alive) {
+        goldStar.respawnTimer++;
+        if (goldStar.respawnTimer >= 300) { // Respawn after 5 seconds
+          respawnGoldStar();
+        }
+        return;
+      }
 
       if (goldStar.collecting) {
         goldStar.collectTimer++;
@@ -454,10 +460,7 @@
             createExplosion(e.x, e.y, e.type === "triangle" ? "cyan" : "red");
             if (goldStar.health <= 0) {
               goldStar.alive = false;
-              goldStar.redPunchLevel = 0;
-              goldStar.blueCannonnLevel = 0;
-              goldStar.redKills = 0;
-              goldStar.blueKills = 0;
+              goldStar.respawnTimer = 0;
               createExplosion(goldStar.x, goldStar.y, "gold");
             }
             return false;
@@ -488,10 +491,7 @@
             createExplosion(e.x, e.y, "magenta");
             if (goldStar.health <= 0) {
               goldStar.alive = false;
-              goldStar.redPunchLevel = 0;
-              goldStar.blueCannonnLevel = 0;
-              goldStar.redKills = 0;
-              goldStar.blueKills = 0;
+              goldStar.respawnTimer = 0;
               createExplosion(goldStar.x, goldStar.y, "gold");
             }
             return false;
@@ -597,10 +597,7 @@
         d.health -= 50;
         if (goldStar.health <= 0) {
           goldStar.alive = false;
-          goldStar.redPunchLevel = 0;
-          goldStar.blueCannonnLevel = 0;
-          goldStar.redKills = 0;
-          goldStar.blueKills = 0;
+          goldStar.respawnTimer = 0;
           createExplosion(goldStar.x, goldStar.y, "gold");
         }
       }
@@ -617,10 +614,7 @@
           goldStar.health -= l.damage;
           if (goldStar.health <= 0) {
             goldStar.alive = false;
-            goldStar.redPunchLevel = 0;
-            goldStar.blueCannonnLevel = 0;
-            goldStar.redKills = 0;
-            goldStar.blueKills = 0;
+            goldStar.respawnTimer = 0;
             createExplosion(goldStar.x, goldStar.y, "gold");
           }
           return false;
@@ -822,11 +816,11 @@
       ctx.fillText(`Lives: ${player.lives}`, 20, 120);
       
       if (goldStar.alive) {
-        ctx.fillText(`Gold Star - Red Punch Lv${goldStar.redPunchLevel} (${goldStar.redKills}/next ${Math.ceil(goldStar.redKills/5)*5})`, 20, 150);
-        ctx.fillText(`Gold Star - Blue Cannon Lv${goldStar.blueCannonnLevel} (${goldStar.blueKills}/next ${Math.ceil(goldStar.blueKills/5)*5})`, 20, 180);
+        ctx.fillText(`Gold Star - Red Punch Lv${goldStar.redPunchLevel} (${goldStar.redKills}/${Math.ceil((goldStar.redKills+1)/5)*5})`, 20, 150);
+        ctx.fillText(`Gold Star - Blue Cannon Lv${goldStar.blueCannonnLevel} (${goldStar.blueKills}/${Math.ceil((goldStar.blueKills+1)/5)*5})`, 20, 180);
       } else {
         ctx.fillStyle = "red";
-        ctx.fillText(`Gold Star: DESTROYED`, 20, 150);
+        ctx.fillText(`Gold Star: DESTROYED - Respawning in ${Math.ceil((300-goldStar.respawnTimer)/60)}s`, 20, 150);
       }
 
       if (waveTransition) {
