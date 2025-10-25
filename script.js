@@ -54,7 +54,7 @@ function spawnDiamondEnemy() {
   diamonds.push({x: canvas.width/2, y: canvas.height/3, size: 40, health: 200, type: "diamond", attachments: [], canReflect: false, angle: Math.random()*Math.PI*2, shootTimer: 0, pulse: 0});
 }
 function spawnPowerUp(x, y, type) {
-  powerUps.push({x, y, type, size: 20, lifetime: 600, active: true});
+  powerUps.push({x, y, type, size: 15, lifetime: 600, active: true});
 }
 function spawnTunnel() {
   const h = canvas.height/3, w = 600;
