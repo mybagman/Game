@@ -4,6 +4,7 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 let keys = {}, bullets = [], enemies = [], lightning = [], explosions = [], diamonds = [], powerUps = [], tunnels = [];
+let redPunchEffects = []; // visual AoE pulses for Gold Star red punch
 let score = 0, wave = 0, minionsToAdd = [];
 let shootCooldown = 0, waveTransition = false;
 const WAVE_BREAK_MS = 2500;
@@ -24,25 +25,49 @@ document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
 function respawnGoldStar() {
-  goldStar.x = canvas.width/4; goldStar.y = canvas.height/2; goldStar.health = goldStar.maxHealth;
-  goldStar.alive = true; goldStar.redPunchLevel = 0; goldStar.blueCannonnLevel = 0;
-  goldStar.redKills = 0; goldStar.blueKills = 0; goldStar.collecting = false;
-  goldStar.collectTimer = 0; goldStar.targetPowerUp = null; goldStar.respawnTimer = 0;
+  goldStar.x = canvas.width/4; goldStar.y = canvas.height/2;
+  goldStar.health = goldStar.maxHealth;
+  goldStar.alive = true;
+  goldStar.redPunchLevel = 0;
+  goldStar.blueCannonnLevel = 0;
+  goldStar.redKills = 0;
+  goldStar.blueKills = 0;
+  goldStar.collecting = false;
+  goldStar.collectTimer = 0;
+  goldStar.targetPowerUp = null;
+  goldStar.respawnTimer = 0;
+  goldStar.punchCooldown = 0;
+  goldStar.cannonCooldown = 0;
 }
 
 function respawnPlayer() {
-  player.health = player.maxHealth; player.x = canvas.width/2; player.y = canvas.height/2;
-  player.invulnerable = true; player.invulnerableTimer = 120;
+  player.health = player.maxHealth;
+  player.x = canvas.width/2;
+  player.y = canvas.height/2;
+  player.invulnerable = true;
+  player.invulnerableTimer = 120;
 }
 
 function spawnRedSquares(c, fromBoss = false) {
-  for (let i = 0; i < c; i++) enemies.push({x: Math.random()*canvas.width, y: Math.random()*(canvas.height/2), size: 30, speed: 1.8, health: 30, type: "red-square", shootTimer: 0, fromBoss});
+  for (let i = 0; i < c; i++) enemies.push({
+    x: Math.random()*canvas.width,
+    y: Math.random()*(canvas.height/2),
+    size: 30, speed: 1.8, health: 30, type: "red-square", shootTimer: 0, fromBoss
+  });
 }
 function spawnTriangles(c, fromBoss = false) {
-  for (let i = 0; i < c; i++) enemies.push({x: Math.random()*canvas.width, y: Math.random()*canvas.height, size: 30, speed: 1.5, health: 40, type: "triangle", shootTimer: 0, fromBoss});
+  for (let i = 0; i < c; i++) enemies.push({
+    x: Math.random()*canvas.width,
+    y: Math.random()*canvas.height,
+    size: 30, speed: 1.5, health: 40, type: "triangle", shootTimer: 0, fromBoss
+  });
 }
 function spawnReflectors(c) {
-  for (let i = 0; i < c; i++) enemies.push({x: Math.random()*canvas.width, y: Math.random()*canvas.height, width: 40, height: 20, angle: 0, speed: 1.2, health: 200, type: "reflector", shieldActive: false});
+  for (let i = 0; i < c; i++) enemies.push({
+    x: Math.random()*canvas.width,
+    y: Math.random()*canvas.height,
+    width: 40, height: 20, angle: 0, speed: 1.2, health: 200, type: "reflector", shieldActive: false, fromBoss: false
+  });
 }
 function spawnBoss() {
   enemies.push({x: canvas.width/2, y: 100, size: 150, health: 1000, type: "boss", spawnTimer: 0, shootTimer: 0, angle: 0});
@@ -54,7 +79,8 @@ function spawnDiamondEnemy() {
   diamonds.push({x: canvas.width/2, y: canvas.height/3, size: 40, health: 200, type: "diamond", attachments: [], canReflect: false, angle: Math.random()*Math.PI*2, shootTimer: 0, pulse: 0});
 }
 function spawnPowerUp(x, y, type) {
-  powerUps.push({x, y, type, size: 15, lifetime: 600, active: true});
+  // power-ups are circles now
+  powerUps.push({x, y, type, size: 18, lifetime: 600, active: true});
 }
 function spawnTunnel() {
   const h = canvas.height/3, w = 600;
@@ -80,21 +106,42 @@ function updateBullets() {
     return b.x >= -40 && b.x <= canvas.width+40 && b.y >= -40 && b.y <= canvas.height+40;
   });
 }
-function updatePowerUps() { powerUps = powerUps.filter(p => { p.lifetime--; return p.lifetime > 0; }); }
+function updatePowerUps() {
+  powerUps = powerUps.filter(p => { p.lifetime--; return p.lifetime > 0; });
+}
 function updateTunnels() { for (let i = tunnels.length-1; i >= 0; i--) { const t = tunnels[i]; if (!t.active) continue; t.x -= t.speed; if (t.x+t.width < 0) tunnels.splice(i,1); }}
 function updateExplosions(){ explosions = explosions.filter(ex => { ex.x += ex.dx; ex.y += ex.dy; ex.life--; return ex.life>0; }); }
 
+// update and fade AoE pulses
+function updateRedPunchEffects() {
+  for (let i = redPunchEffects.length-1; i >= 0; i--) {
+    const e = redPunchEffects[i];
+    e.life--;
+    e.r = e.maxR * (1 - e.life / e.maxLife);
+    if (e.life <= 0) redPunchEffects.splice(i,1);
+  }
+}
+
 function updateGoldStar() {
   if (!goldStar.alive) { goldStar.respawnTimer++; if (goldStar.respawnTimer >= 300) respawnGoldStar(); return; }
-  
+
   if (goldStar.collecting) {
     goldStar.collectTimer++;
     if (goldStar.collectTimer >= 60) {
       if (goldStar.targetPowerUp) {
         const pu = goldStar.targetPowerUp;
-        if (pu.type === "red-punch") { goldStar.redKills++; if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) goldStar.redPunchLevel++; }
-        else if (pu.type === "blue-cannon") { goldStar.blueKills++; if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) goldStar.blueCannonnLevel++; }
-        else if (pu.type === "health") { goldStar.health = Math.min(goldStar.maxHealth, goldStar.health+30); player.health = Math.min(player.maxHealth, player.health+30); }
+        if (pu.type === "red-punch") {
+          goldStar.redKills++;
+          if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) goldStar.redPunchLevel++;
+        }
+        else if (pu.type === "blue-cannon") {
+          goldStar.blueKills++;
+          if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) goldStar.blueCannonnLevel++;
+        }
+        else if (pu.type === "health") {
+          goldStar.health = Math.min(goldStar.maxHealth, goldStar.health+30);
+          player.health = Math.min(player.maxHealth, player.health+30);
+        }
         powerUps = powerUps.filter(p => p !== pu);
       }
       goldStar.collecting = false; goldStar.collectTimer = 0; goldStar.targetPowerUp = null;
@@ -105,7 +152,7 @@ function updateGoldStar() {
   // SMART AVOIDANCE - check for nearby threats
   let dangerX = 0, dangerY = 0, dangerCount = 0;
   const DANGER_RADIUS = 120;
-  
+
   // Avoid enemies
   enemies.forEach(e => {
     const dist = Math.hypot(e.x - goldStar.x, e.y - goldStar.y);
@@ -130,8 +177,8 @@ function updateGoldStar() {
 
   // Move toward nearest power-up if safe
   let nearest = null, minDist = Infinity;
-  for (const pu of powerUps) { 
-    const dist = Math.hypot(pu.x-goldStar.x, pu.y-goldStar.y); 
+  for (const pu of powerUps) {
+    const dist = Math.hypot(pu.x-goldStar.x, pu.y-goldStar.y);
     if (dist < minDist) { minDist = dist; nearest = pu; }
   }
 
@@ -146,19 +193,19 @@ function updateGoldStar() {
     const dx = nearest.x-goldStar.x, dy = nearest.y-goldStar.y, mag = Math.hypot(dx,dy)||1;
     moveX = dx/mag;
     moveY = dy/mag;
-    if (minDist < 25) { 
-      goldStar.collecting = true; 
-      goldStar.targetPowerUp = nearest; 
-      goldStar.collectTimer = 0; 
+    if (minDist < 25) {
+      goldStar.collecting = true;
+      goldStar.targetPowerUp = nearest;
+      goldStar.collectTimer = 0;
       return;
     }
   } else {
     // Follow player at safe distance
     const dx = player.x-goldStar.x, dy = player.y-goldStar.y, dist = Math.hypot(dx,dy);
-    if (dist > 100) { 
-      const mag = dist||1; 
-      moveX = dx/mag * 0.7; 
-      moveY = dy/mag * 0.7; 
+    if (dist > 100) {
+      const mag = dist||1;
+      moveX = dx/mag * 0.7;
+      moveY = dy/mag * 0.7;
     }
   }
 
@@ -173,23 +220,50 @@ function updateGoldStar() {
   goldStar.x = Math.max(50, Math.min(canvas.width-50, goldStar.x));
   goldStar.y = Math.max(50, Math.min(canvas.height-50, goldStar.y));
 
-  // Red punch attack
+  // Red punch AoE attack (every 5 seconds)
   if (goldStar.redPunchLevel > 0) {
-    goldStar.punchCooldown++; 
-    if (goldStar.punchCooldown > 40) { 
+    goldStar.punchCooldown++;
+    const FRAMES_PER_5S = 60 * 5; // assuming ~60fps
+    if (goldStar.punchCooldown >= FRAMES_PER_5S) {
       goldStar.punchCooldown = 0;
-      const range = goldStar.redPunchLevel === 1 ? 80 : 200, punches = Math.min(goldStar.redPunchLevel, 5);
-      enemies.filter(e => Math.hypot(e.x-goldStar.x, e.y-goldStar.y) < range).slice(0, punches).forEach(e => { 
-        e.health -= 25; 
-        createExplosion(e.x, e.y, "orange"); 
+      // AoE radius scales with level
+      const baseRadius = 80;
+      const radius = baseRadius + (goldStar.redPunchLevel - 1) * 40;
+      // Deal damage to enemies in radius
+      let punches = Math.min(goldStar.redPunchLevel, 5);
+      // We'll pick up to `punches` nearest enemies in radius and damage them heavily.
+      const nearby = enemies
+        .map(e => ({e, d: Math.hypot(e.x - goldStar.x, e.y - goldStar.y)}))
+        .filter(o => o.d <= radius)
+        .sort((a,b) => a.d - b.d)
+        .slice(0, punches);
+      nearby.forEach(o => {
+        o.e.health -= 60;
+        createExplosion(o.e.x, o.e.y, "orange");
+        if (o.e.health <= 0) {
+          // award score and possibly spawn power-ups similar to normal kills
+          const idx = enemies.indexOf(o.e);
+          if (idx !== -1) {
+            const e = enemies[idx];
+            if (!e.fromBoss) {
+              if (e.type === "triangle") { score += 10; spawnPowerUp(e.x, e.y, "blue-cannon"); }
+              else if (e.type === "red-square") { score += 10; spawnPowerUp(e.x, e.y, "red-punch"); }
+              else if (e.type === "boss") score += 100;
+              else if (e.type === "mini-boss") score += 50;
+            }
+            enemies.splice(idx,1);
+          }
+        }
       });
+      // Visual pulse
+      redPunchEffects.push({x: goldStar.x, y: goldStar.y, maxR: radius, r: 0, life: 30, maxLife: 30, color: "rgba(255,100,0,0.25)"});
     }
   }
 
-  // Blue cannon attack
+  // Blue cannon attack (unchanged behavior but ensure cooldown resets on respawn)
   if (goldStar.blueCannonnLevel > 0) {
-    goldStar.cannonCooldown++; 
-    if (goldStar.cannonCooldown > 50) { 
+    goldStar.cannonCooldown++;
+    if (goldStar.cannonCooldown > 50) {
       goldStar.cannonCooldown = 0;
       if (enemies.length > 0) {
         const target = enemies[0], dx = target.x-goldStar.x, dy = target.y-goldStar.y, mag = Math.hypot(dx,dy)||1;
@@ -247,7 +321,11 @@ function updateMiniBoss(boss) {
 function updateDiamond(d) {
   const roamSpeed = 1.6;
   let nearest = null, nd = Infinity;
-  for (const e of enemies) { if (!e || e.type === "diamond" || ["boss","mini-boss"].includes(e.type)) continue; const dist = Math.hypot(e.x-d.x, e.y-d.y); if (dist < nd) { nd = dist; nearest = e; } }
+  for (const e of enemies) {
+    if (!e || e.type === "diamond" || ["boss","mini-boss"].includes(e.type)) continue;
+    const dist = Math.hypot(e.x-d.x, e.y-d.y);
+    if (dist < nd) { nd = dist; nearest = e; }
+  }
   if (nearest && nd < 800) {
     const dx = nearest.x-d.x, dy = nearest.y-d.y, mag = Math.hypot(dx,dy)||1;
     d.x += (dx/mag)*Math.min(roamSpeed, mag); d.y += (dy/mag)*Math.min(roamSpeed, mag);
@@ -367,7 +445,7 @@ function updateEnemies() {
       const distToPlayer = Math.hypot(e.x-player.x, e.y-player.y);
       if (distToPlayer < (e.size/2 + player.size/2)) { if (!player.invulnerable) player.health -= (e.type === "triangle" ? 25 : 15); createExplosion(e.x, e.y, "red"); e.health -= 100; }
       const distToGoldStar = Math.hypot(e.x-goldStar.x, e.y-goldStar.y);
-      if (goldStar.alive && distToGoldStar < (e.size/2 + goldStar.size/2)) { goldStar.health -= (e.type === "triangle" ? 20 : 12); createExplosion(e.x, e.y, "orange"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); } e.health -= 100; }
+      if (goldStar.alive && distToGoldStar < (e.size/2 + goldStar.size/2)) { goldStar.health -= (e.type === "triangle" ? 20 : 12); createExplosion(e.x, e.y, "orange"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); } }
       return e.health > 0;
     }
 
@@ -411,7 +489,7 @@ function updateEnemies() {
       const distToPlayer = Math.hypot(e.x-player.x, e.y-player.y);
       if (distToPlayer < 30) { if (!player.invulnerable) player.health -= 15; createExplosion(e.x, e.y, "magenta"); e.health -= 50; }
       const distToGoldStar = Math.hypot(e.x-goldStar.x, e.y-goldStar.y);
-      if (goldStar.alive && distToGoldStar < 30) { goldStar.health -= 15; createExplosion(e.x, e.y, "magenta"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); } e.health -= 50; }
+      if (goldStar.alive && distToGoldStar < 30) { goldStar.health -= 15; createExplosion(e.x, e.y, "magenta"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); } }
       return e.health > 0;
     }
 
@@ -496,12 +574,12 @@ function drawEnemies() {
     else if (e.type === "triangle") { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.moveTo(e.x, e.y-e.size/2); ctx.lineTo(e.x-e.size/2, e.y+e.size/2); ctx.lineTo(e.x+e.size/2, e.y+e.size/2); ctx.closePath(); ctx.fill(); }
     else if (e.type === "boss") { ctx.fillStyle = "yellow"; ctx.beginPath(); ctx.arc(e.x, e.y, e.size/2, 0, Math.PI*2); ctx.fill(); }
     else if (e.type === "mini-boss") { ctx.fillStyle = "orange"; ctx.beginPath(); ctx.arc(e.x, e.y, e.size/2, 0, Math.PI*2); ctx.fill(); }
-    else if (e.type === "reflector") { 
-      ctx.save(); 
-      ctx.translate(e.x, e.y); 
-      ctx.rotate(e.angle||0); 
-      ctx.fillStyle = e.shieldActive ? "rgba(138,43,226,0.8)" : "purple"; 
-      ctx.fillRect(-e.width/2, -e.height/2, e.width, e.height); 
+    else if (e.type === "reflector") {
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.rotate(e.angle||0);
+      ctx.fillStyle = e.shieldActive ? "rgba(138,43,226,0.8)" : "purple";
+      ctx.fillRect(-e.width/2, -e.height/2, e.width, e.height);
       if (e.shieldActive) {
         ctx.strokeStyle = "rgba(138,43,226,0.5)";
         ctx.lineWidth = 2;
@@ -509,15 +587,17 @@ function drawEnemies() {
         ctx.arc(0, 0, 60, 0, Math.PI*2);
         ctx.stroke();
       }
-      ctx.restore(); 
+      ctx.restore();
     }
   });
 }
 
 function drawDiamonds() {
   diamonds.forEach(d => {
-    ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.angle||0); ctx.strokeStyle = d.canReflect ? "cyan" : "white"; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(0, -d.size/2 - d.pulse); ctx.lineTo(d.size/2 + d.pulse, 0); ctx.lineTo(0, d.size/2 + d.pulse); ctx.lineTo(-d.size/2 - d.pulse, 0); ctx.closePath(); ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.angle||0);
+    ctx.strokeStyle = d.canReflect ? "cyan" : "white"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(0, -d.size/2 - d.pulse); ctx.lineTo(d.size/2 + d.pulse, 0); ctx.lineTo(0, d.size/2 + d.pulse); ctx.lineTo(-d.size/2 - d.pulse, 0); ctx.closePath(); ctx.stroke();
+    ctx.restore();
     d.attachments.forEach(a => {
       if (a.type === "triangle") { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.moveTo(a.x, a.y-(a.size||20)/2); ctx.lineTo(a.x-(a.size||20)/2, a.y+(a.size||20)/2); ctx.lineTo(a.x+(a.size||20)/2, a.y+(a.size||20)/2); ctx.closePath(); ctx.fill(); }
       else if (a.type === "reflector") { ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.orbitAngle||0); ctx.fillStyle = "magenta"; ctx.fillRect(-(a.width||20)/2, -(a.height||10)/2, a.width||20, a.height||10); ctx.restore(); }
@@ -533,21 +613,56 @@ function drawTunnels() { tunnels.forEach(t => { if (t.active) { ctx.fillStyle = 
 function drawPowerUps() {
   powerUps.forEach(p => {
     ctx.save(); ctx.translate(p.x, p.y);
-    if (p.type === "red-punch") { ctx.fillStyle = "red"; ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size); }
-    else if (p.type === "blue-cannon") { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.moveTo(0, -p.size/2); ctx.lineTo(-p.size/2, p.size/2); ctx.lineTo(p.size/2, p.size/2); ctx.closePath(); ctx.fill(); }
-    else if (p.type === "health") { ctx.fillStyle = "magenta"; ctx.beginPath(); ctx.arc(0, 0, p.size/2, 0, Math.PI*2); ctx.fill(); }
+    // All power-ups are circular now:
+    if (p.type === "red-punch") {
+      ctx.fillStyle = "red";
+      ctx.beginPath(); ctx.arc(0, 0, p.size/2, 0, Math.PI*2); ctx.fill();
+      // small fist dot
+      ctx.fillStyle = "white"; ctx.fillRect(-2, -6, 4, 4);
+    }
+    else if (p.type === "blue-cannon") {
+      ctx.fillStyle = "cyan";
+      ctx.beginPath(); ctx.arc(0, 0, p.size/2, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "white"; ctx.fillRect(-2, -6, 4, 4);
+    }
+    else if (p.type === "health") {
+      ctx.fillStyle = "magenta";
+      ctx.beginPath(); ctx.arc(0, 0, p.size/2, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "white"; ctx.fillRect(-2, -6, 4, 4);
+    }
     ctx.restore();
   });
 }
 
 function drawGoldStar() {
   if (!goldStar.alive) return;
-  if (goldStar.collecting) { const pulse = Math.sin(goldStar.collectTimer*0.3)*3; ctx.strokeStyle = "yellow"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(goldStar.x, goldStar.y, goldStar.size/2+10, 0, Math.PI*2); ctx.stroke(); }
-  ctx.save(); ctx.translate(goldStar.x, goldStar.y); ctx.fillStyle = "gold"; ctx.beginPath();
-  for (let i = 0; i < 5; i++) { const angle = (i*4*Math.PI)/5 - Math.PI/2, radius = i%2===0 ? goldStar.size/2 : goldStar.size/4, x = Math.cos(angle)*radius, y = Math.sin(angle)*radius; if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
-  ctx.closePath(); ctx.fill(); ctx.restore();
+  if (goldStar.collecting) {
+    const pulse = Math.sin(goldStar.collectTimer*0.3)*3;
+    ctx.strokeStyle = "yellow"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(goldStar.x, goldStar.y, goldStar.size/2+10+pulse, 0, Math.PI*2); ctx.stroke();
+  }
+  ctx.save(); ctx.translate(goldStar.x, goldStar.y); ctx.fillStyle = "gold";
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const angle = (i*4*Math.PI)/5 - Math.PI/2;
+    const radius = i%2===0 ? goldStar.size/2 : goldStar.size/4;
+    const x = Math.cos(angle)*radius, y = Math.sin(angle)*radius;
+    if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
   const barWidth = 50; ctx.fillStyle = "gray"; ctx.fillRect(goldStar.x-barWidth/2, goldStar.y-goldStar.size-10, barWidth, 5);
   ctx.fillStyle = "gold"; ctx.fillRect(goldStar.x-barWidth/2, goldStar.y-goldStar.size-10, barWidth*(goldStar.health/goldStar.maxHealth), 5);
+}
+
+function drawRedPunchEffects() {
+  redPunchEffects.forEach(e => {
+    ctx.beginPath();
+    ctx.strokeStyle = e.color;
+    ctx.lineWidth = 4 * (e.life / e.maxLife);
+    ctx.arc(e.x, e.y, e.r, 0, Math.PI*2);
+    ctx.stroke();
+  });
 }
 
 function drawUI() {
@@ -557,8 +672,14 @@ function drawUI() {
   if (goldStar.alive) {
     ctx.fillText(`Gold Star - Red Power Lv${goldStar.redPunchLevel} (${goldStar.redKills}/${Math.ceil((goldStar.redKills+1)/5)*5})`, 20, 150);
     ctx.fillText(`Gold Star - Blue Power Lv${goldStar.blueCannonnLevel} (${goldStar.blueKills}/${Math.ceil((goldStar.blueKills+1)/5)*5})`, 20, 180);
-  } else { ctx.fillStyle = "red"; ctx.fillText(`Gold Star: DESTROYED - Respawning in ${Math.ceil((300-goldStar.respawnTimer)/60)}s`, 20, 150); }
-  if (waveTransition) { ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(canvas.width/2-160, canvas.height/2-40, 320, 80); ctx.fillStyle = "white"; ctx.font = "24px Arial"; ctx.fillText("Wave Complete!", canvas.width/2-110, canvas.height/2); }
+  } else {
+    ctx.fillStyle = "red";
+    ctx.fillText(`Gold Star: DESTROYED - Respawning in ${Math.ceil((300-goldStar.respawnTimer)/60)}s`, 20, 150);
+  }
+  if (waveTransition) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(canvas.width/2-160, canvas.height/2-40, 320, 80);
+    ctx.fillStyle = "white"; ctx.font = "24px Arial"; ctx.fillText("Wave Complete! Spawning next...", canvas.width/2-150, canvas.height/2);
+  }
 }
 
 const waves = [
@@ -613,10 +734,10 @@ function gameLoop() {
   if (!blocked) { player.x = newX; player.y = newY; }
 
   handleShooting(); updateBullets(); updateEnemies(); updateLightning(); checkBulletCollisions();
-  updateExplosions(); updateTunnels(); updatePowerUps(); updateGoldStar();
+  updateExplosions(); updateTunnels(); updatePowerUps(); updateGoldStar(); updateRedPunchEffects();
 
   drawPlayer(); drawBullets(); drawEnemies(); drawDiamonds(); drawLightning(); drawExplosions();
-  drawTunnels(); drawPowerUps(); drawGoldStar(); drawUI(); tryAdvanceWave();
+  drawTunnels(); drawPowerUps(); drawGoldStar(); drawRedPunchEffects(); drawUI(); tryAdvanceWave();
 
   if (player.health <= 0) {
     player.lives--;
