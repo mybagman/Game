@@ -588,6 +588,46 @@ function checkBulletCollisions() {
   }
 }
 
+// Only gold star (not player) can pick up power-ups.
+// Gold star retains its slow collect mechanic (collecting when minDist < 25),
+// but we also allow immediate pickup if the gold star physically overlaps the power-up.
+function handlePowerUpCollections() {
+  for (let i = powerUps.length - 1; i >= 0; i--) {
+    const p = powerUps[i];
+
+    if (!goldStar.alive) continue;
+
+    // If goldStar is actively collecting this power-up (the slow mechanic), skip immediate handling:
+    if (goldStar.collecting && goldStar.targetPowerUp === p) continue;
+
+    const distToGold = Math.hypot(p.x - goldStar.x, p.y - goldStar.y);
+
+    // Immediate pickup if gold star overlaps the power-up (bypass slow collect)
+    if (distToGold < (p.size/2 + goldStar.size/2)) {
+      if (p.type === "red-punch") {
+        goldStar.redKills++;
+        if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) goldStar.redPunchLevel++;
+        createExplosion(p.x, p.y, "orange");
+        score += 8;
+      } else if (p.type === "blue-cannon") {
+        goldStar.blueKills++;
+        if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) goldStar.blueCannonnLevel++;
+        createExplosion(p.x, p.y, "cyan");
+        score += 8;
+      } else if (p.type === "health") {
+        goldStar.health = Math.min(goldStar.maxHealth, goldStar.health+30);
+        player.health = Math.min(player.maxHealth, player.health+30);
+        createExplosion(p.x, p.y, "magenta");
+        score += 5;
+      } else {
+        createExplosion(p.x, p.y, "white");
+      }
+      powerUps.splice(i, 1);
+      continue;
+    }
+  }
+}
+
 function drawPlayer() {
   ctx.fillStyle = (player.invulnerable && Math.floor(Date.now()/100)%2 === 0) ? "rgba(0,255,0,0.5)" : "lime";
   ctx.fillRect(player.x-player.size/2, player.y-player.size/2, player.size, player.size);
@@ -762,7 +802,12 @@ function gameLoop() {
   if (!blocked) { player.x = newX; player.y = newY; }
 
   handleShooting(); updateBullets(); updateEnemies(); updateLightning(); checkBulletCollisions();
-  updateExplosions(); updateTunnels(); updatePowerUps(); updateGoldStar(); updateRedPunchEffects();
+  updateExplosions(); updateTunnels(); updatePowerUps();
+
+  // Only gold star may pick up power-ups now
+  handlePowerUpCollections();
+
+  updateGoldStar(); updateRedPunchEffects();
 
   drawPlayer(); drawBullets(); drawEnemies(); drawDiamonds(); drawLightning(); drawExplosions();
   drawTunnels(); drawPowerUps(); drawGoldStar(); drawRedPunchEffects(); drawUI(); tryAdvanceWave();
