@@ -33,41 +33,37 @@ function respawnGoldStar() {
 }
 
 // =============================================
-// GOLD STAR AI: Smart Follow + Avoid + Collect
+// GOLD STAR AI: Priority-Based Avoid + Collect + Follow
 // =============================================
 function updateGoldStarAI() {
     if (!goldStar.alive) return;
 
-    // === CONFIG ===
-    const MOVE_SPEED = 4;
-    const FOLLOW_DISTANCE = 150;  // how far to stay behind player
-    const AVOID_RADIUS = 300;
-    const AVOID_FORCE = 8;
-    const PREDICT_TIME = 20;
+    const MOVE_SPEED = 5;
+    const SAFE_DIST = 120;      // absolute minimal safe distance from enemies/bullets
     const POWERUP_RADIUS = 400;
     const SNAP_DISTANCE = 25;
-    const SAFE_MARGIN = 100;
-    const SPIRAL_FACTOR = 0.2;
-    const HOVER_AMPLITUDE = 0.5;
+    const FOLLOW_DIST = 150;
+    const PREDICT_TIME = 20;
 
-    let avoidVX = 0, avoidVY = 0;
-    let targetVX = 0, targetVY = 0;
-    let threatCount = 0;
+    let vx = 0, vy = 0;
 
-    // === STEP 1: Avoid enemies ===
+    // === STEP 1: Emergency avoidance (highest priority) ===
+    let danger = false;
+
+    // Enemies
     for (let e of enemies) {
         if (!e.alive) continue;
         const dx = goldStar.x - e.x;
         const dy = goldStar.y - e.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < AVOID_RADIUS && dist > 0) {
-            avoidVX += (dx / dist) * AVOID_FORCE;
-            avoidVY += (dy / dist) * AVOID_FORCE;
-            threatCount++;
+        if (dist < SAFE_DIST) {
+            vx += (dx / dist) * 8; // strong repulsion
+            vy += (dy / dist) * 8;
+            danger = true;
         }
     }
 
-    // === STEP 2: Avoid enemy bullets ===
+    // Enemy bullets
     for (let b of bullets) {
         if (b.owner !== "enemy") continue;
         const futureX = b.x + b.vx * PREDICT_TIME;
@@ -75,93 +71,84 @@ function updateGoldStarAI() {
         const dx = goldStar.x - futureX;
         const dy = goldStar.y - futureY;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < AVOID_RADIUS && dist > 0) {
-            avoidVX += (dx / dist) * AVOID_FORCE;
-            avoidVY += (dy / dist) * AVOID_FORCE;
-            threatCount++;
+        if (dist < SAFE_DIST) {
+            vx += (dx / dist) * 10; // even stronger repulsion
+            vy += (dy / dist) * 10;
+            danger = true;
         }
     }
 
-    // === STEP 3: Target nearest safe power-up ===
-    let nearestPowerUp = null;
-    let nearestDist = Infinity;
+    // === STEP 2: Move toward safe power-ups only if no danger ===
+    if (!danger) {
+        let nearestPowerUp = null;
+        let nearestDist = Infinity;
 
-    for (let p of powerUps) {
-        if (!p.active) continue;
-        const dx = p.x - goldStar.x;
-        const dy = p.y - goldStar.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
+        for (let p of powerUps) {
+            if (!p.active) continue;
+            const dx = p.x - goldStar.x;
+            const dy = p.y - goldStar.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
 
-        // Check safety
-        let safe = true;
-        for (let e of enemies) {
-            if (!e.alive) continue;
-            const ex = e.x - p.x;
-            const ey = e.y - p.y;
-            if (Math.sqrt(ex*ex + ey*ey) < SAFE_MARGIN) safe = false;
+            // check safety around power-up
+            let safe = true;
+            for (let e of enemies) {
+                if (!e.alive) continue;
+                const ex = e.x - p.x;
+                const ey = e.y - p.y;
+                if (Math.sqrt(ex*ex + ey*ey) < SAFE_DIST) safe = false;
+            }
+            for (let b of bullets) {
+                if (b.owner !== "enemy") continue;
+                const futureX = b.x + b.vx * PREDICT_TIME;
+                const futureY = b.y + b.vy * PREDICT_TIME;
+                const bx = futureX - p.x;
+                const by = futureY - p.y;
+                if (Math.sqrt(bx*bx + by*by) < SAFE_DIST) safe = false;
+            }
+
+            if (safe && dist < nearestDist && dist < POWERUP_RADIUS) {
+                nearestDist = dist;
+                nearestPowerUp = p;
+            }
         }
-        for (let b of bullets) {
-            if (b.owner !== "enemy") continue;
-            const futureX = b.x + b.vx * PREDICT_TIME;
-            const futureY = b.y + b.vy * PREDICT_TIME;
-            const bx = futureX - p.x;
-            const by = futureY - p.y;
-            if (Math.sqrt(bx*bx + by*by) < SAFE_MARGIN) safe = false;
-        }
 
-        if (safe && dist < nearestDist) {
-            nearestDist = dist;
-            nearestPowerUp = p;
+        if (nearestPowerUp) {
+            const dx = nearestPowerUp.x - goldStar.x;
+            const dy = nearestPowerUp.y - goldStar.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (dist < SNAP_DISTANCE) {
+                goldStar.x = nearestPowerUp.x;
+                goldStar.y = nearestPowerUp.y;
+                if (nearestPowerUp.collect) nearestPowerUp.collect();
+                else nearestPowerUp.active = false;
+            } else {
+                vx += (dx / dist) * 3; // move toward power-up
+                vy += (dy / dist) * 3;
+            }
         }
     }
 
-    // === STEP 4: Move toward power-up if available ===
-    if (nearestPowerUp && nearestDist < POWERUP_RADIUS) {
-        const dx = nearestPowerUp.x - goldStar.x;
-        const dy = nearestPowerUp.y - goldStar.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-
-        if (dist < SNAP_DISTANCE) {
-            goldStar.x = nearestPowerUp.x;
-            goldStar.y = nearestPowerUp.y;
-            if (nearestPowerUp.collect) nearestPowerUp.collect();
-            else nearestPowerUp.active = false;
-        } else {
-            targetVX += (dx / dist) * 2;
-            targetVY += (dy / dist) * 2;
-            targetVX += -dy / dist * SPIRAL_FACTOR;
-            targetVY += dx / dist * SPIRAL_FACTOR;
-        }
-    } else {
-        // === STEP 5: Follow player safely ===
+    // === STEP 3: Follow player only if safe and no power-up nearby ===
+    if (!danger) {
         const dx = player.x - goldStar.x;
         const dy = player.y - goldStar.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
 
-        // Stay near but not on top of the player
-        if (dist > FOLLOW_DISTANCE) {
-            targetVX += (dx / dist) * 2;
-            targetVY += (dy / dist) * 2;
-        } else if (dist < FOLLOW_DISTANCE * 0.8) {
-            targetVX -= (dx / dist) * 1;
-            targetVY -= (dy / dist) * 1;
+        if (dist > FOLLOW_DIST) {
+            vx += (dx / dist) * 2;
+            vy += (dy / dist) * 2;
         }
     }
 
-    // === STEP 6: Combine avoidance + target movement ===
-    let finalVX = targetVX + avoidVX;
-    let finalVY = targetVY + avoidVY;
-
-    const len = Math.sqrt(finalVX*finalVX + finalVY*finalVY);
+    // === STEP 4: Apply movement ===
+    const len = Math.sqrt(vx*vx + vy*vy);
     if (len > 0) {
-        goldStar.x += (finalVX / len) * MOVE_SPEED;
-        goldStar.y += (finalVY / len) * MOVE_SPEED;
-    } else {
-        goldStar.x += Math.sin(Date.now()/300) * HOVER_AMPLITUDE;
-        goldStar.y += Math.cos(Date.now()/400) * HOVER_AMPLITUDE;
+        goldStar.x += (vx / len) * MOVE_SPEED;
+        goldStar.y += (vy / len) * MOVE_SPEED;
     }
 
-    // === STEP 7: Keep inside canvas ===
+    // === STEP 5: Clamp inside canvas ===
     goldStar.x = Math.max(goldStar.size/2, Math.min(canvas.width - goldStar.size/2, goldStar.x));
     goldStar.y = Math.max(goldStar.size/2, Math.min(canvas.height - goldStar.size/2, goldStar.y));
 }
