@@ -32,6 +32,89 @@ function respawnGoldStar() {
   goldStar.collectTimer = 0; goldStar.targetPowerUp = null; goldStar.respawnTimer = 0;
 }
 
+// =============================================
+// GOLD STAR AI: Evasion + Tactical Positioning
+// =============================================
+function updateGoldStarAI() {
+  if (!goldStar.alive) return;
+
+  // === CONFIG ===
+  const AVOID_RADIUS = 300;      // detection range for danger
+  const AVOID_FORCE = 0.6;       // strength of avoidance
+  const STAY_CLOSE_RADIUS = 200; // ideal distance from player
+  const ORBIT_SPEED = 0.04;      // orbiting movement speed
+  const MOVE_SPEED = 4;          // overall movement speed
+  const HOVER_AMPLITUDE = 0.5;   // gentle idle drift
+
+  let vx = 0;
+  let vy = 0;
+  let threats = 0;
+
+  // === STEP 1: Avoid Enemies ===
+  for (let e of enemies) {
+    if (!e.alive) continue;
+    const dx = goldStar.x - e.x;
+    const dy = goldStar.y - e.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < AVOID_RADIUS && dist > 0) {
+      vx += dx / dist;
+      vy += dy / dist;
+      threats++;
+    }
+  }
+
+  // === STEP 2: Avoid Enemy Bullets ===
+  for (let b of bullets) {
+    if (b.owner !== "enemy") continue;
+    const dx = goldStar.x - b.x;
+    const dy = goldStar.y - b.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < AVOID_RADIUS && dist > 0) {
+      vx += dx / dist;
+      vy += dy / dist;
+      threats++;
+    }
+  }
+
+  // === STEP 3: Tactical Movement Near Player ===
+  const dxToPlayer = player.x - goldStar.x;
+  const dyToPlayer = player.y - goldStar.y;
+  const distToPlayer = Math.sqrt(dxToPlayer * dxToPlayer + dyToPlayer * dyToPlayer);
+
+  if (threats > 0) {
+    // Normalize avoidance
+    vx /= threats;
+    vy /= threats;
+  } else {
+    // Orbit smoothly around player
+    const angle = Date.now() * ORBIT_SPEED;
+    const orbitX = player.x + Math.cos(angle) * STAY_CLOSE_RADIUS;
+    const orbitY = player.y + Math.sin(angle) * STAY_CLOSE_RADIUS;
+
+    vx += orbitX - goldStar.x;
+    vy += orbitY - goldStar.y;
+  }
+
+  // === STEP 4: Apply Movement ===
+  const len = Math.sqrt(vx * vx + vy * vy);
+  if (len > 0) {
+    vx /= len;
+    vy /= len;
+    goldStar.x += vx * MOVE_SPEED;
+    goldStar.y += vy * MOVE_SPEED;
+  } else {
+    // Idle hover motion
+    goldStar.x += Math.sin(Date.now() / 300) * HOVER_AMPLITUDE;
+    goldStar.y += Math.cos(Date.now() / 400) * HOVER_AMPLITUDE;
+  }
+
+  // === STEP 5: Keep Gold Star inside canvas ===
+  goldStar.x = Math.max(goldStar.size / 2, Math.min(canvas.width - goldStar.size / 2, goldStar.x));
+  goldStar.y = Math.max(goldStar.size / 2, Math.min(canvas.height - goldStar.size / 2, goldStar.y));
+}
+
 function respawnPlayer() {
   player.health = player.maxHealth; player.x = canvas.width/2; player.y = canvas.height/2;
   player.invulnerable = true; player.invulnerableTimer = 120;
@@ -339,7 +422,7 @@ function gameLoop() {
   if (!blocked) { player.x = newX; player.y = newY; }
 
   handleShooting(); updateBullets(); updateEnemies(); updateLightning(); checkBulletCollisions();
-  updateExplosions(); updateTunnels(); updatePowerUps(); updateGoldStar();
+  updateExplosions(); updateTunnels(); updatePowerUps(); updateGoldStarAI();
 
   drawPlayer(); drawBullets(); drawEnemies(); drawDiamonds(); drawLightning(); drawExplosions();
   drawTunnels(); drawPowerUps(); drawGoldStar(); drawUI(); tryAdvanceWave();
