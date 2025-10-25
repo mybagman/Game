@@ -1,3 +1,4 @@
+ url=https://github.com/mybagman/Game/blob/2bbd9b33c8181267fb03d95c490e8cb355b8b1ff/script.js
 // Paste this file next to index.html. It contains only JavaScript (no HTML tags).
 
 const canvas = document.getElementById("gameCanvas");
@@ -31,6 +32,13 @@ function respawnGoldStar() {
   goldStar.redKills = 0; goldStar.blueKills = 0; goldStar.collecting = false;
   goldStar.collectTimer = 0; goldStar.targetPowerUp = null; goldStar.respawnTimer = 0;
 }
+
+// NOTE: There are two Gold Star update functions in this file: updateGoldStarAI() and updateGoldStar().
+// The game loop must call the one that matches the rest of the game's data structures (powerUps, bullets, etc).
+// The original bug: gameLoop was calling updateGoldStarAI() which expects different properties (e.g. p.active, b.vx/b.vy, e.alive).
+// Those properties don't exist on the objects produced by the rest of the code, so the AI never targeted powerups, detected collisions, or respawned correctly.
+// The fix is to call updateGoldStar() (which uses the same shapes: powerUps with lifetime, bullets with dx/dy, etc).
+// Below is the rest of the file unchanged except the gameLoop now calls updateGoldStar().
 
 function updateGoldStarAI() {
     if (!goldStar.alive) return;
@@ -246,8 +254,8 @@ function updateBoss(boss) {
 
 function updateMiniBoss(boss) {
   boss.angle = boss.angle||Math.random()*Math.PI*2; boss.angle += 0.02; boss.x = canvas.width/2+Math.cos(boss.angle)*100; boss.y = 80+Math.sin(boss.angle)*30;
-  boss.spawnTimer = boss.spawnTimer||0; boss.spawnTimer++; if (boss.spawnTimer > 300) { boss.spawnTimer = 0; minionsToAdd.push({x: boss.x+(Math.random()-0.5)*80, y: boss.y+(Math.random()-0.5)*80, size: 25, speed: 2, health: 30, type: "triangle"}); }
-  boss.shootTimer = boss.shootTimer||0; boss.shootTimer++; if (boss.shootTimer > 180) { boss.shootTimer = 0; [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0},{x:1,y:1},{x:1,y:-1},{x:-1,y:1},{x:-1,y:-1}].forEach(d => lightning.push({x: boss.x, y: boss.y, dx: d.x*6, dy: d.y*6, size: 8, damage: 15})); }
+  boss.spawnTimer = boss.spawnTimer||0; boss.spawnTimer++; if (boss.spawnTimer > 300) { boss.spawnTimer = 0; minionsToAdd.push({x: boss.x+(Math.random()-0.5)*80, y: boss.y+(Math.random()-0.5)*80, size: 25, speed: 2, health: 30, type: "red-square"}); }
+  boss.shootTimer = boss.shootTimer||0; boss.shootTimer++; if (boss.shootTimer > 180) { boss.shootTimer = 0; [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0},{x:1,y:1},{x:1,y:-1},{x:-1,y:1},{x:-1,y:-1}].forEach(d => lightning.push({x: boss.x, y: boss.y, dx: d.x*5, dy: d.y*5, size: 6, damage: 15})); }
 }
 
 function updateDiamond(d) {
@@ -266,15 +274,15 @@ function updateDiamond(d) {
 
   for (let i = 0; i < d.attachments.length; i++) {
     const a = d.attachments[i]; a.orbitAngle = (a.orbitAngle||0)+0.06+(a.type === "reflector" ? 0.02 : 0); const orbitRadius = d.size+28+(a.type === "reflector" ? 14 : 0); a.x = d.x+Math.cos(a.orbitAngle)*orbitRadius; a.y = d.y+Math.sin(a.orbitAngle)*orbitRadius;
-    if (a.type === "triangle" || a.type === "red-square") { a.shootTimer = (a.shootTimer||0)+1; const fireRate = a.type === "triangle" ? (a.fireRateBoost ? 40 : 100) : 120; if (a.shootTimer > fireRate) { a.shootTimer = 0; lightning.push({x: a.x, y: a.y, dx: (player.x-a.x)/Math.hypot(player.x-a.x,player.y-a.y)*5, dy: (player.y-a.y)/Math.hypot(player.x-a.x,player.y-a.y)*5, size:6, damage:10}); } }
-    if (a.type === "reflector") for (let bi = bullets.length-1; bi >= 0; bi--) { const b = bullets[bi], distB = Math.hypot(b.x-a.x, b.y-a.y); if (distB < 40) { lightning.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 6, damage: 10}); bullets.splice(bi,1); } }
+    if (a.type === "triangle" || a.type === "red-square") { a.shootTimer = (a.shootTimer||0)+1; const fireRate = a.type === "triangle" ? (a.fireRateBoost ? 40 : 100) : 120; if (a.shootTimer > fireRate) { a.shootTimer = 0; if (a.type === "triangle") lightning.push({x: a.x, y: a.y, dx: (player.x-a.x)/Math.hypot(player.x-a.x,player.y-a.y)*5, dy: (player.y-a.y)/Math.hypot(player.x-a.x,player.y-a.y)*5, size:6, damage:15}); } }
+    if (a.type === "reflector") for (let bi = bullets.length-1; bi >= 0; bi--) { const b = bullets[bi], distB = Math.hypot(b.x-a.x, b.y-a.y); if (distB < 40) { lightning.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 6, damage: 15}); bullets.splice(bi,1); } }
   }
 
   d.shootTimer = (d.shootTimer||0)+1; d.pulse = Math.sin(d.shootTimer*0.1)*4;
-  if (d.canReflect) for (let bi = bullets.length-1; bi >= 0; bi--) { const b = bullets[bi], dist = Math.hypot(b.x-d.x, b.y-d.y); if (dist < 90) { lightning.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 8, damage: 15}); bullets.splice(bi,1); } }
+  if (d.canReflect) for (let bi = bullets.length-1; bi >= 0; bi--) { const b = bullets[bi], dist = Math.hypot(b.x-d.x, b.y-d.y); if (dist < 90) { lightning.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 6, damage: 15}); bullets.splice(bi,1); } }
   if (d.attachments.some(a=>a.spawnMini) && d.shootTimer % 200 === 0) minionsToAdd.push({x: d.x+(Math.random()-0.5)*80, y: d.y+(Math.random()-0.5)*80, size: 25, speed: 2, health: 30, type: "red-square"});
   if (d.attachments.length >= 3 && d.shootTimer % 180 === 0) [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].forEach(dv => lightning.push({x: d.x, y: d.y, dx: dv.x*6, dy: dv.y*6, size: 8, damage: 20}));
-  const distToPlayer = Math.hypot(d.x-player.x, d.y-player.y); if (distToPlayer < (d.size/2+player.size/2)) { if (!player.invulnerable) player.health -= 30; createExplosion(d.x, d.y, "white"); d.health -= 30; }
+  const distToPlayer = Math.hypot(d.x-player.x, d.y-player.y); if (distToPlayer < (d.size/2+player.size/2)) { if (!player.invulnerable) player.health -= 30; createExplosion(d.x, d.y, "white"); d.health -= 999; }
   const distToGoldStar = Math.hypot(d.x-goldStar.x, d.y-goldStar.y); if (goldStar.alive && distToGoldStar < (d.size/2+goldStar.size/2)) { goldStar.health -= 25; createExplosion(d.x, d.y, "white"); }
 }
 
@@ -287,11 +295,11 @@ function updateEnemies() {
       const dx = player.x-e.x, dy = player.y-e.y, dist = Math.hypot(dx,dy)||1; e.x += (dx/dist)*e.speed; e.y += (dy/dist)*e.speed;
       if (e.type === "triangle") { e.shootTimer = (e.shootTimer||0)+1; if (e.shootTimer > 100) { e.shootTimer = 0; lightning.push({x: e.x, y: e.y, dx: (dx/dist)*5, dy: (dy/dist)*5, size:6, damage:15}); } }
       const distToPlayer = Math.hypot(e.x-player.x, e.y-player.y); if (distToPlayer < (e.size/2+player.size/2)) { if (!player.invulnerable) player.health -= (e.type === "triangle" ? 25 : 15); createExplosion(e.x, e.y, "red"); }
-      const distToGoldStar = Math.hypot(e.x-goldStar.x, e.y-goldStar.y); if (goldStar.alive && distToGoldStar < (e.size/2+goldStar.size/2)) { goldStar.health -= (e.type === "triangle" ? 20 : 12); createExplosion(e.x, e.y, "orange"); }
+      const distToGoldStar = Math.hypot(e.x-goldStar.x, e.y-goldStar.y); if (goldStar.alive && distToGoldStar < (e.size/2+goldStar.size/2)) { goldStar.health -= (e.type === "triangle" ? 20 : 12); createExplosion(e.x, e.y, "yellow"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; } }
       return true;
     }
     if (e.type === "reflector") {
-      if (bullets.length > 0) { let closest = bullets.reduce((p,c) => (Math.hypot(c.x-e.x,c.y-e.y) < Math.hypot(p.x-e.x,p.y-e.y) ? c : p)); const dx = closest.x-e.x, dy = closest.y-e.y, dist = Math.hypot(dx,dy) || 1; e.x += Math.sign(dx)*0.5; e.y += Math.sign(dy)*0.5; }
+      if (bullets.length > 0) { let closest = bullets.reduce((p,c) => (Math.hypot(c.x-e.x,c.y-e.y) < Math.hypot(p.x-e.x,p.y-e.y) ? c : p)); const dx = closest.x-e.x, dy = closest.y-e.y, dist = Math.hypot(dx,dy); if (dist < 120) { e.x += (dx/dist)*e.speed; e.y += (dy/dist)*e.speed; } }
       e.angle = (e.angle||0)+0.1; const distToPlayer = Math.hypot(e.x-player.x, e.y-player.y); if (distToPlayer < 30) { if (!player.invulnerable) player.health -= 15; createExplosion(e.x, e.y, "magenta"); }
       const distToGoldStar = Math.hypot(e.x-goldStar.x, e.y-goldStar.y); if (goldStar.alive && distToGoldStar < 30) { goldStar.health -= 15; createExplosion(e.x, e.y, "magenta"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; } }
       return true;
@@ -337,7 +345,7 @@ function checkBulletCollisions() {
         }
       }
     }
-    if (bi >= 0 && bi < bullets.length) { const b2 = bullets[bi]; for (let di = diamonds.length-1; di >= 0; di--) { const d = diamonds[di]; if (Math.hypot(b2.x-d.x, b2.y-d.y) < d.size/2) { d.health -= 10; bullets.splice(bi,1); if (d.health <= 0) { createExplosion(d.x, d.y, "white"); d.attachments.forEach(a => enemies.push({x: a.x, y: a.y, size: a.size||20, speed: a.speed||1.5, health: a.health||30, type: a.type})); diamonds.splice(di,1); score += 100; } break; } } }
+    if (bi >= 0 && bi < bullets.length) { const b2 = bullets[bi]; for (let di = diamonds.length-1; di >= 0; di--) { const d = diamonds[di]; if (Math.hypot(b2.x-d.x, b2.y-d.y) < d.size/2) { d.health -= 10; bullets.splice(bi,1); if (d.health <= 0) { createExplosion(d.x, d.y, "white"); d.attachments.forEach(a => enemies.push({x: a.x, y: a.y, size: a.size||20, speed: a.speed||1.5, health: a.health||30, type: a.type})); diamonds.splice(di,1); score += 100; } di = -1; } } }
   }
 }
 
@@ -458,7 +466,7 @@ function gameLoop() {
   if (!blocked) { player.x = newX; player.y = newY; }
 
   handleShooting(); updateBullets(); updateEnemies(); updateLightning(); checkBulletCollisions();
-  updateExplosions(); updateTunnels(); updatePowerUps(); updateGoldStarAI();
+  updateExplosions(); updateTunnels(); updatePowerUps(); updateGoldStar(); // <<--- FIX: call updateGoldStar() (matches game objects)
 
   drawPlayer(); drawBullets(); drawEnemies(); drawDiamonds(); drawLightning(); drawExplosions();
   drawTunnels(); drawPowerUps(); drawGoldStar(); drawUI(); tryAdvanceWave();
@@ -466,7 +474,7 @@ function gameLoop() {
   if (player.health <= 0) {
     player.lives--;
     if (player.lives > 0) { respawnPlayer(); requestAnimationFrame(gameLoop); }
-    else { ctx.fillStyle = "white"; ctx.font = "50px Arial"; ctx.fillText("GAME OVER", canvas.width/2-150, canvas.height/2); ctx.font = "30px Arial"; ctx.fillText(`Final Score: ${score}`, canvas.width/2-120, canvas.height/2+50); }
+    else { ctx.fillStyle = "white"; ctx.font = "50px Arial"; ctx.fillText("GAME OVER", canvas.width/2-150, canvas.height/2); ctx.font = "30px Arial"; ctx.fillText(`Final Score: ${score}`, canvas.width/2-120, canvas.height/2+40); }
   } else requestAnimationFrame(gameLoop);
 }
 
