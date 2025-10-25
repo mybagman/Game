@@ -30,8 +30,6 @@ function respawnGoldStar() {
   goldStar.collectTimer = 0; goldStar.targetPowerUp = null; goldStar.respawnTimer = 0;
 }
 
-/* ---------- Enemy / spawn helpers ---------- */
-
 function respawnPlayer() {
   player.health = player.maxHealth; player.x = canvas.width/2; player.y = canvas.height/2;
   player.invulnerable = true; player.invulnerableTimer = 120;
@@ -44,7 +42,7 @@ function spawnTriangles(c, fromBoss = false) {
   for (let i = 0; i < c; i++) enemies.push({x: Math.random()*canvas.width, y: Math.random()*canvas.height, size: 30, speed: 1.5, health: 40, type: "triangle", shootTimer: 0, fromBoss});
 }
 function spawnReflectors(c) {
-  for (let i = 0; i < c; i++) enemies.push({x: Math.random()*canvas.width, y: Math.random()*canvas.height, width: 40, height: 20, angle: 0, speed: 0.8, health: 200, type: "reflector"});
+  for (let i = 0; i < c; i++) enemies.push({x: Math.random()*canvas.width, y: Math.random()*canvas.height, width: 40, height: 20, angle: 0, speed: 1.2, health: 200, type: "reflector", shieldActive: false});
 }
 function spawnBoss() {
   enemies.push({x: canvas.width/2, y: 100, size: 150, health: 1000, type: "boss", spawnTimer: 0, shootTimer: 0, angle: 0});
@@ -64,8 +62,6 @@ function spawnTunnel() {
 }
 function createExplosion(x,y,color="red"){ for (let i=0;i<20;i++) explosions.push({x, y, dx:(Math.random()-0.5)*6, dy:(Math.random()-0.5)*6, radius:Math.random()*4+2, color, life:30}); }
 
-/* ---------- Player shooting ---------- */
-
 function handleShooting() {
   if (shootCooldown > 0) shootCooldown--;
   let dirX = 0, dirY = 0;
@@ -78,12 +74,9 @@ function handleShooting() {
   }
 }
 
-/* ---------- Updates ---------- */
-
 function updateBullets() {
   bullets = bullets.filter(b => {
     b.x += b.dx; b.y += b.dy;
-    // lifetime via bounds
     return b.x >= -40 && b.x <= canvas.width+40 && b.y >= -40 && b.y <= canvas.height+40;
   });
 }
@@ -91,10 +84,9 @@ function updatePowerUps() { powerUps = powerUps.filter(p => { p.lifetime--; retu
 function updateTunnels() { for (let i = tunnels.length-1; i >= 0; i--) { const t = tunnels[i]; if (!t.active) continue; t.x -= t.speed; if (t.x+t.width < 0) tunnels.splice(i,1); }}
 function updateExplosions(){ explosions = explosions.filter(ex => { ex.x += ex.dx; ex.y += ex.dy; ex.life--; return ex.life>0; }); }
 
-/* ---------- Gold Star logic (player sidekick) ---------- */
-
 function updateGoldStar() {
   if (!goldStar.alive) { goldStar.respawnTimer++; if (goldStar.respawnTimer >= 300) respawnGoldStar(); return; }
+  
   if (goldStar.collecting) {
     goldStar.collectTimer++;
     if (goldStar.collectTimer >= 60) {
@@ -109,29 +101,96 @@ function updateGoldStar() {
     }
     return;
   }
-  // move to nearest power-up if close
+
+  // SMART AVOIDANCE - check for nearby threats
+  let dangerX = 0, dangerY = 0, dangerCount = 0;
+  const DANGER_RADIUS = 120;
+  
+  // Avoid enemies
+  enemies.forEach(e => {
+    const dist = Math.hypot(e.x - goldStar.x, e.y - goldStar.y);
+    if (dist < DANGER_RADIUS && dist > 0) {
+      const weight = (DANGER_RADIUS - dist) / DANGER_RADIUS;
+      dangerX += (goldStar.x - e.x) / dist * weight;
+      dangerY += (goldStar.y - e.y) / dist * weight;
+      dangerCount++;
+    }
+  });
+
+  // Avoid enemy projectiles
+  lightning.forEach(l => {
+    const dist = Math.hypot(l.x - goldStar.x, l.y - goldStar.y);
+    if (dist < DANGER_RADIUS && dist > 0) {
+      const weight = (DANGER_RADIUS - dist) / DANGER_RADIUS * 1.5;
+      dangerX += (goldStar.x - l.x) / dist * weight;
+      dangerY += (goldStar.y - l.y) / dist * weight;
+      dangerCount++;
+    }
+  });
+
+  // Move toward nearest power-up if safe
   let nearest = null, minDist = Infinity;
-  for (const pu of powerUps) { const dist = Math.hypot(pu.x-goldStar.x, pu.y-goldStar.y); if (dist < minDist) { minDist = dist; nearest = pu; }}
-  if (nearest && minDist < 300) {
-    const dx = nearest.x-goldStar.x, dy = nearest.y-goldStar.y, mag = Math.hypot(dx,dy)||1;
-    goldStar.x += (dx/mag)*goldStar.speed; goldStar.y += (dy/mag)*goldStar.speed;
-    if (minDist < 25) { goldStar.collecting = true; goldStar.targetPowerUp = nearest; goldStar.collectTimer = 0; }
-  } else {
-    const dx = player.x-goldStar.x, dy = player.y-goldStar.y, dist = Math.hypot(dx,dy);
-    if (dist > 100) { const mag = dist||1; goldStar.x += (dx/mag)*goldStar.speed*0.7; goldStar.y += (dy/mag)*goldStar.speed*0.7; }
+  for (const pu of powerUps) { 
+    const dist = Math.hypot(pu.x-goldStar.x, pu.y-goldStar.y); 
+    if (dist < minDist) { minDist = dist; nearest = pu; }
   }
 
-  // red punch
-  if (goldStar.redPunchLevel > 0) {
-    goldStar.punchCooldown++; if (goldStar.punchCooldown > 40) { goldStar.punchCooldown = 0;
-      const range = goldStar.redPunchLevel === 1 ? 80 : 200, punches = Math.min(goldStar.redPunchLevel, 5);
-      enemies.filter(e => Math.hypot(e.x-goldStar.x, e.y-goldStar.y) < range).slice(0, punches).forEach(e => { e.health -= 25; createExplosion(e.x, e.y, "orange"); });
+  let moveX = 0, moveY = 0;
+
+  if (dangerCount > 0) {
+    // FLEE from danger
+    moveX = dangerX;
+    moveY = dangerY;
+  } else if (nearest && minDist < 300) {
+    // Move toward power-up
+    const dx = nearest.x-goldStar.x, dy = nearest.y-goldStar.y, mag = Math.hypot(dx,dy)||1;
+    moveX = dx/mag;
+    moveY = dy/mag;
+    if (minDist < 25) { 
+      goldStar.collecting = true; 
+      goldStar.targetPowerUp = nearest; 
+      goldStar.collectTimer = 0; 
+      return;
+    }
+  } else {
+    // Follow player at safe distance
+    const dx = player.x-goldStar.x, dy = player.y-goldStar.y, dist = Math.hypot(dx,dy);
+    if (dist > 100) { 
+      const mag = dist||1; 
+      moveX = dx/mag * 0.7; 
+      moveY = dy/mag * 0.7; 
     }
   }
 
-  // blue cannon
+  // Normalize and apply movement
+  const moveMag = Math.hypot(moveX, moveY);
+  if (moveMag > 0) {
+    goldStar.x += (moveX / moveMag) * goldStar.speed;
+    goldStar.y += (moveY / moveMag) * goldStar.speed;
+  }
+
+  // Keep in bounds
+  goldStar.x = Math.max(50, Math.min(canvas.width-50, goldStar.x));
+  goldStar.y = Math.max(50, Math.min(canvas.height-50, goldStar.y));
+
+  // Red punch attack
+  if (goldStar.redPunchLevel > 0) {
+    goldStar.punchCooldown++; 
+    if (goldStar.punchCooldown > 40) { 
+      goldStar.punchCooldown = 0;
+      const range = goldStar.redPunchLevel === 1 ? 80 : 200, punches = Math.min(goldStar.redPunchLevel, 5);
+      enemies.filter(e => Math.hypot(e.x-goldStar.x, e.y-goldStar.y) < range).slice(0, punches).forEach(e => { 
+        e.health -= 25; 
+        createExplosion(e.x, e.y, "orange"); 
+      });
+    }
+  }
+
+  // Blue cannon attack
   if (goldStar.blueCannonnLevel > 0) {
-    goldStar.cannonCooldown++; if (goldStar.cannonCooldown > 50) { goldStar.cannonCooldown = 0;
+    goldStar.cannonCooldown++; 
+    if (goldStar.cannonCooldown > 50) { 
+      goldStar.cannonCooldown = 0;
       if (enemies.length > 0) {
         const target = enemies[0], dx = target.x-goldStar.x, dy = target.y-goldStar.y, mag = Math.hypot(dx,dy)||1;
         if (goldStar.blueCannonnLevel === 1) bullets.push({x: goldStar.x, y: goldStar.y, dx: (dx/mag)*8, dy: (dy/mag)*8, size: 8, owner: "gold"});
@@ -152,8 +211,6 @@ function updateGoldStar() {
     }
   }
 }
-
-/* ---------- Boss / miniboss ---------- */
 
 function updateBoss(boss) {
   boss.angle = boss.angle||0; boss.angle += 0.01;
@@ -187,8 +244,6 @@ function updateMiniBoss(boss) {
   }
 }
 
-/* ---------- Diamond (magnet) ---------- */
-
 function updateDiamond(d) {
   const roamSpeed = 1.6;
   let nearest = null, nd = Infinity;
@@ -203,7 +258,6 @@ function updateDiamond(d) {
     d.y = canvas.height/2 + Math.sin(d.angle)*radius;
   }
 
-  // attract enemies and attach them
   for (let i = enemies.length-1; i >= 0; i--) {
     const e = enemies[i];
     if (!e || e === d || e.attachedTo || e.type === "boss" || e.type === "mini-boss") continue;
@@ -212,18 +266,18 @@ function updateDiamond(d) {
       const pull = 0.04 + (1 - Math.min(dist/260,1)) * 0.06;
       e.x += dx * pull; e.y += dy * pull;
       if (dist < 28) {
-        // attach to diamond
         enemies.splice(i,1);
         e.attachedTo = d;
         e.orbitAngle = Math.random()*Math.PI*2;
         if (e.type === "triangle") e.fireRateBoost = true;
         if (e.type === "red-square") e.spawnMini = true;
+        if (e.type === "reflector") d.canReflect = true;
+        e.speed = 0;
         d.attachments.push(e);
       }
     }
   }
 
-  // update attachments orbit and actions
   for (let i = 0; i < d.attachments.length; i++) {
     const a = d.attachments[i];
     a.orbitAngle = (a.orbitAngle||0) + 0.06 + (a.type === "reflector" ? 0.02 : 0);
@@ -231,17 +285,14 @@ function updateDiamond(d) {
     a.x = d.x + Math.cos(a.orbitAngle) * orbitRadius;
     a.y = d.y + Math.sin(a.orbitAngle) * orbitRadius;
 
-    // attack from attachments
     a.shootTimer = (a.shootTimer||0) + 1;
     const fireRate = a.type === "triangle" ? (a.fireRateBoost ? 40 : 100) : 120;
     if (a.shootTimer > fireRate) {
       a.shootTimer = 0;
-      // fire towards player
       const dxp = player.x - a.x, dyp = player.y - a.y, mag = Math.hypot(dxp,dyp)||1;
       lightning.push({x: a.x, y: a.y, dx: (dxp/mag)*5, dy: (dyp/mag)*5, size: 6, damage: 15});
     }
 
-    // reflect bullets if reflector
     if (a.type === "reflector") {
       for (let bi = bullets.length-1; bi >= 0; bi--) {
         const b = bullets[bi], distB = Math.hypot(b.x-a.x, b.y-a.y);
@@ -253,7 +304,6 @@ function updateDiamond(d) {
     }
   }
 
-  // diamond reflect behavior for nearby bullets
   d.shootTimer = (d.shootTimer||0)+1;
   d.pulse = Math.sin(d.shootTimer*0.1)*4;
   if (d.canReflect) {
@@ -267,7 +317,7 @@ function updateDiamond(d) {
   }
 
   if (d.attachments.some(a=>a.spawnMini) && d.shootTimer % 200 === 0) {
-    minionsToAdd.push({x: d.x+(Math.random()-0.5)*80, y: d.y+(Math.random()-0.5)*80, size: 25, speed: 2, health: 30, type: "red-square"});
+    minionsToAdd.push({x: d.x+(Math.random()-0.5)*80, y: d.y+(Math.random()-0.5)*80, size: 25, speed: 2, health: 30, type: "red-square", fromBoss: true});
   }
   if (d.attachments.length >= 3 && d.shootTimer % 180 === 0) {
     [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].forEach(dv => lightning.push({x: d.x, y: d.y, dx: dv.x*6, dy: dv.y*6, size: 8, damage: 20}));
@@ -284,28 +334,24 @@ function updateDiamond(d) {
   if (goldStar.alive && distToGoldStar < (d.size/2 + goldStar.size/2)) {
     goldStar.health -= 25;
     createExplosion(d.x, d.y, "white");
+    if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); }
   }
 }
-
-/* ---------- Enemies update and general collisions ---------- */
 
 function updateEnemies() {
   if (player.invulnerable) { player.invulnerableTimer--; if (player.invulnerableTimer <= 0) player.invulnerable = false; }
 
-  // diamonds first
   for (let di = diamonds.length-1; di >= 0; di--) {
     const d = diamonds[di];
     updateDiamond(d);
     if (d.health <= 0) {
       createExplosion(d.x, d.y, "white");
-      // release attachments back as enemies
       d.attachments.forEach(a => { a.attachedTo = null; enemies.push(a); });
       diamonds.splice(di,1);
       score += 200;
     }
   }
 
-  // enemies
   enemies = enemies.filter(e => {
     if (!e) return false;
     if (e.type === "boss") { updateBoss(e); return e.health > 0; }
@@ -321,29 +367,51 @@ function updateEnemies() {
       const distToPlayer = Math.hypot(e.x-player.x, e.y-player.y);
       if (distToPlayer < (e.size/2 + player.size/2)) { if (!player.invulnerable) player.health -= (e.type === "triangle" ? 25 : 15); createExplosion(e.x, e.y, "red"); e.health -= 100; }
       const distToGoldStar = Math.hypot(e.x-goldStar.x, e.y-goldStar.y);
-      if (goldStar.alive && distToGoldStar < (e.size/2 + goldStar.size/2)) { goldStar.health -= (e.type === "triangle" ? 20 : 12); createExplosion(e.x, e.y, "orange"); e.health -= 100; }
+      if (goldStar.alive && distToGoldStar < (e.size/2 + goldStar.size/2)) { goldStar.health -= (e.type === "triangle" ? 20 : 12); createExplosion(e.x, e.y, "orange"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); } e.health -= 100; }
       return e.health > 0;
     }
 
     if (e.type === "reflector") {
-      if (bullets.length > 0) {
-        let closest = bullets.reduce((p,c) => (Math.hypot(c.x-e.x,c.y-e.y) < Math.hypot(p.x-e.x,p.y-e.y) ? c : p));
-        const dx = closest.x-e.x, dy = closest.y-e.y, dist = Math.hypot(dx,dy)||1;
-        // rotate slightly towards bullets
-        e.angle = (e.angle||0) + 0.05;
-        if (dist < 40) {
-          lightning.push({x: closest.x, y: closest.y, dx: -closest.dx, dy: -closest.dy, size: 6, damage: 15});
-          // remove bullet
-          const bi = bullets.indexOf(closest); if (bi >= 0) bullets.splice(bi,1);
+      // NEW BEHAVIOR: Shield nearby allies
+      let nearestAlly = null, minDist = Infinity;
+      enemies.forEach(ally => {
+        if (ally !== e && ally.type !== "reflector") {
+          const dist = Math.hypot(ally.x - e.x, ally.y - e.y);
+          if (dist < minDist && dist < 150) { minDist = dist; nearestAlly = ally; }
+        }
+      });
+
+      if (nearestAlly) {
+        // Move toward ally to shield them
+        const dx = nearestAlly.x - e.x, dy = nearestAlly.y - e.y, dist = Math.hypot(dx,dy)||1;
+        e.x += (dx/dist) * e.speed;
+        e.y += (dy/dist) * e.speed;
+        e.shieldActive = true;
+      } else {
+        // Move toward player as fallback
+        const dx = player.x - e.x, dy = player.y - e.y, dist = Math.hypot(dx,dy)||1;
+        e.x += (dx/dist) * e.speed * 0.5;
+        e.y += (dy/dist) * e.speed * 0.5;
+        e.shieldActive = false;
+      }
+
+      e.angle = (e.angle||0)+0.1;
+
+      // Reflect nearby bullets
+      for (let bi = bullets.length-1; bi >= 0; bi--) {
+        const b = bullets[bi];
+        const dist = Math.hypot(b.x - e.x, b.y - e.y);
+        if (dist < 50) {
+          lightning.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 6, damage: 15});
+          bullets.splice(bi,1);
           e.health -= 5;
-          if (e.health <= 0) { createExplosion(e.x, e.y, "purple"); return false; }
         }
       }
-      e.angle = (e.angle||0)+0.1;
+
       const distToPlayer = Math.hypot(e.x-player.x, e.y-player.y);
       if (distToPlayer < 30) { if (!player.invulnerable) player.health -= 15; createExplosion(e.x, e.y, "magenta"); e.health -= 50; }
       const distToGoldStar = Math.hypot(e.x-goldStar.x, e.y-goldStar.y);
-      if (goldStar.alive && distToGoldStar < 30) { goldStar.health -= 15; createExplosion(e.x, e.y, "magenta"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; } }
+      if (goldStar.alive && distToGoldStar < 30) { goldStar.health -= 15; createExplosion(e.x, e.y, "magenta"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); } e.health -= 50; }
       return e.health > 0;
     }
 
@@ -353,13 +421,11 @@ function updateEnemies() {
   if (minionsToAdd.length > 0) { enemies.push(...minionsToAdd); minionsToAdd = []; }
 }
 
-/* ---------- Lightning & collisions ---------- */
-
 function updateLightning() {
   lightning = lightning.filter(l => {
     l.x += l.dx; l.y += l.dy;
     if (Math.hypot(l.x-player.x, l.y-player.y) < player.size/2) { if (!player.invulnerable) player.health -= l.damage; return false; }
-    if (goldStar.alive && Math.hypot(l.x-goldStar.x, l.y-goldStar.y) < goldStar.size/2) { goldStar.health -= l.damage; if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; } return false; }
+    if (goldStar.alive && Math.hypot(l.x-goldStar.x, l.y-goldStar.y) < goldStar.size/2) { goldStar.health -= l.damage; if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); } return false; }
     return l.x >= -20 && l.x <= canvas.width+20 && l.y >= -20 && l.y <= canvas.height+20;
   });
 }
@@ -367,7 +433,6 @@ function updateLightning() {
 function checkBulletCollisions() {
   for (let bi = bullets.length-1; bi >= 0; bi--) {
     const b = bullets[bi];
-    // hit enemies
     for (let ei = enemies.length-1; ei >= 0; ei--) {
       const e = enemies[ei]; if (!e) continue;
       if (e.type === "reflector") {
@@ -389,7 +454,7 @@ function checkBulletCollisions() {
               if (e.type === "boss") score += 100;
               else if (e.type === "mini-boss") score += 50;
               else if (e.type === "triangle") { score += 10; spawnPowerUp(e.x, e.y, "blue-cannon"); }
-              else score += 5;
+              else if (e.type === "red-square") { score += 10; spawnPowerUp(e.x, e.y, "red-punch"); }
             }
           }
           break;
@@ -397,7 +462,6 @@ function checkBulletCollisions() {
       }
     }
 
-    // hit diamond attachments
     for (let di = diamonds.length-1; di >= 0; di--) {
       const d = diamonds[di];
       for (let ai = d.attachments.length-1; ai >= 0; ai--) {
@@ -405,12 +469,11 @@ function checkBulletCollisions() {
         if (Math.hypot(b.x-a.x, b.y-a.y) < radius) {
           a.health = (a.health||30) - (b.owner === "player" ? 10 : 6); bullets.splice(bi,1);
           if (a.health <= 0) { createExplosion(a.x, a.y, "white"); d.attachments.splice(ai,1); score += 5; if (!d.attachments.some(at => at.type === "reflector")) d.canReflect = false; }
-          ai = -1; // break attachments loop
+          ai = -1;
         }
       }
-      // hit diamond core
-      if (Math.hypot(b.x-d.x, b.y-d.y) < d.size/2) {
-        d.health -= (b.owner === "player" ? 12 : 6);
+      if (bi >= 0 && bi < bullets.length && Math.hypot(bullets[bi].x-d.x, bullets[bi].y-d.y) < d.size/2) {
+        d.health -= (bullets[bi].owner === "player" ? 12 : 6);
         bullets.splice(bi,1);
         if (d.health <= 0) { createExplosion(d.x, d.y, "white"); d.attachments.forEach(a => enemies.push(a)); diamonds.splice(di,1); score += 100; }
         break;
@@ -418,8 +481,6 @@ function checkBulletCollisions() {
     }
   }
 }
-
-/* ---------- Drawing ---------- */
 
 function drawPlayer() {
   ctx.fillStyle = (player.invulnerable && Math.floor(Date.now()/100)%2 === 0) ? "rgba(0,255,0,0.5)" : "lime";
@@ -435,7 +496,21 @@ function drawEnemies() {
     else if (e.type === "triangle") { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.moveTo(e.x, e.y-e.size/2); ctx.lineTo(e.x-e.size/2, e.y+e.size/2); ctx.lineTo(e.x+e.size/2, e.y+e.size/2); ctx.closePath(); ctx.fill(); }
     else if (e.type === "boss") { ctx.fillStyle = "yellow"; ctx.beginPath(); ctx.arc(e.x, e.y, e.size/2, 0, Math.PI*2); ctx.fill(); }
     else if (e.type === "mini-boss") { ctx.fillStyle = "orange"; ctx.beginPath(); ctx.arc(e.x, e.y, e.size/2, 0, Math.PI*2); ctx.fill(); }
-    else if (e.type === "reflector") { ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.angle||0); ctx.fillStyle = "purple"; ctx.fillRect(-e.width/2, -e.height/2, e.width, e.height); ctx.restore(); }
+    else if (e.type === "reflector") { 
+      ctx.save(); 
+      ctx.translate(e.x, e.y); 
+      ctx.rotate(e.angle||0); 
+      ctx.fillStyle = e.shieldActive ? "rgba(138,43,226,0.8)" : "purple"; 
+      ctx.fillRect(-e.width/2, -e.height/2, e.width, e.height); 
+      if (e.shieldActive) {
+        ctx.strokeStyle = "rgba(138,43,226,0.5)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 60, 0, Math.PI*2);
+        ctx.stroke();
+      }
+      ctx.restore(); 
+    }
   });
 }
 
@@ -480,13 +555,11 @@ function drawUI() {
   ctx.strokeStyle = "black"; ctx.strokeRect(20, 20, 200, 20); ctx.fillStyle = "white"; ctx.font = "20px Arial";
   ctx.fillText(`Score: ${score}`, 20, 60); ctx.fillText(`Wave: ${wave+1}`, 20, 90); ctx.fillText(`Lives: ${player.lives}`, 20, 120);
   if (goldStar.alive) {
-    ctx.fillText(`Gold Star - Red Punch Lv${goldStar.redPunchLevel} (${goldStar.redKills}/${Math.ceil((goldStar.redKills+1)/5)*5})`, 20, 150);
-    ctx.fillText(`Gold Star - Blue Cannon Lv${goldStar.blueCannonnLevel} (${goldStar.blueKills}/${Math.ceil((goldStar.blueKills+1)/5)*5})`, 20, 180);
+    ctx.fillText(`Gold Star - Red Power Lv${goldStar.redPunchLevel} (${goldStar.redKills}/${Math.ceil((goldStar.redKills+1)/5)*5})`, 20, 150);
+    ctx.fillText(`Gold Star - Blue Power Lv${goldStar.blueCannonnLevel} (${goldStar.blueKills}/${Math.ceil((goldStar.blueKills+1)/5)*5})`, 20, 180);
   } else { ctx.fillStyle = "red"; ctx.fillText(`Gold Star: DESTROYED - Respawning in ${Math.ceil((300-goldStar.respawnTimer)/60)}s`, 20, 150); }
   if (waveTransition) { ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(canvas.width/2-160, canvas.height/2-40, 320, 80); ctx.fillStyle = "white"; ctx.font = "24px Arial"; ctx.fillText("Wave Complete!", canvas.width/2-110, canvas.height/2); }
 }
-
-/* ---------- Waves ---------- */
 
 const waves = [
   { enemies: [{ type: "red-square", count: 2 }] },
@@ -525,8 +598,6 @@ function tryAdvanceWave() {
     setTimeout(() => { wave++; spawnWave(wave); waveTransition = false; }, WAVE_BREAK_MS);
   }
 }
-
-/* ---------- Main loop ---------- */
 
 function gameLoop() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
