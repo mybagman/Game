@@ -1,17 +1,19 @@
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 let keys = {}, bullets = [], enemies = [], lightning = [], explosions = [], diamonds = [], powerUps = [], tunnels = [];
-let redPunchEffects = []; // visual AoE pulses for Gold Star red punch
+let redPunchEffects = [];
 let score = 0, wave = 0, minionsToAdd = [];
-let shootCooldown = 0, waveTransition = false;
+let shootCooldown = 0, waveTransition = false, waveTransitionTimer = 0;
 const WAVE_BREAK_MS = 2500;
 
 let player = {
   x: canvas.width/2, y: canvas.height/2, size: 30, speed: 5,
-  health: 100, maxHealth: 100, lives: 3, invulnerable: false, invulnerableTimer: 0
+  health: 100, maxHealth: 100, lives: 3, invulnerable: false, invulnerableTimer: 0,
+  reflectAvailable: false
 };
 
 let goldStar = {
@@ -19,7 +21,7 @@ let goldStar = {
   health: 150, maxHealth: 150, alive: true, redPunchLevel: 0, blueCannonnLevel: 0,
   redKills: 0, blueKills: 0, punchCooldown: 0, cannonCooldown: 0,
   collecting: false, collectTimer: 0, targetPowerUp: null, respawnTimer: 0,
-  reflectAvailable: false // one-charge reflector ability (from reflector power-up)
+  reflectAvailable: false
 };
 
 document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
@@ -81,7 +83,6 @@ function spawnDiamondEnemy() {
   diamonds.push({x: canvas.width/2, y: canvas.height/3, size: 40, health: 200, type: "diamond", attachments: [], canReflect: false, angle: Math.random()*Math.PI*2, shootTimer: 0, pulse: 0});
 }
 function spawnPowerUp(x, y, type) {
-  // power-ups are circles now
   powerUps.push({x, y, type, size: 18, lifetime: 600, active: true});
 }
 function spawnTunnel() {
@@ -114,7 +115,6 @@ function updatePowerUps() {
 function updateTunnels() { for (let i = tunnels.length-1; i >= 0; i--) { const t = tunnels[i]; if (!t.active) continue; t.x -= t.speed; if (t.x+t.width < 0) tunnels.splice(i,1); }}
 function updateExplosions(){ explosions = explosions.filter(ex => { ex.x += ex.dx; ex.y += ex.dy; ex.life--; return ex.life>0; }); }
 
-// update and fade AoE pulses
 function updateRedPunchEffects() {
   for (let i = redPunchEffects.length-1; i >= 0; i--) {
     const e = redPunchEffects[i];
@@ -124,20 +124,13 @@ function updateRedPunchEffects() {
   }
 }
 
-// Centralized red punch implementation so it's a named function and reliable
 function performRedPunch() {
-  // AoE radius scales with level
   const baseRadius = 80;
   const radius = baseRadius + Math.max(0, (goldStar.redPunchLevel - 1)) * 40;
-  // Determine how many targets to hit (level-limited). Guarantee at least 1 hit if level > 0
   let punches = Math.max(1, Math.min(goldStar.redPunchLevel, 8));
-  // Damage scales with level
   const damage = 40 * goldStar.redPunchLevel;
-
-  // Knockback strength (only active from level 3+)
   const knockbackForce = goldStar.redPunchLevel >= 3 ? 15 + (goldStar.redPunchLevel - 3) * 5 : 0;
 
-  // Deal damage to enemies in radius (nearest first, up to punches)
   const nearby = enemies
     .map(e => ({ e, d: Math.hypot((e.x || 0) - goldStar.x, (e.y || 0) - goldStar.y) }))
     .filter(o => o.d <= radius)
@@ -146,12 +139,9 @@ function performRedPunch() {
 
   nearby.forEach(o => {
     if (!o.e) return;
-
-    // Damage
     o.e.health -= damage;
     createExplosion(o.e.x, o.e.y, "orange");
 
-    // Knockback effect (only at level 3+)
     if (knockbackForce > 0 && o.d > 0) {
       const dx = o.e.x - goldStar.x;
       const dy = o.e.y - goldStar.y;
@@ -162,7 +152,6 @@ function performRedPunch() {
       o.e.y += pushY;
     }
 
-    // Enemy death logic
     if (o.e.health <= 0) {
       const idx = enemies.indexOf(o.e);
       if (idx !== -1) {
@@ -173,7 +162,6 @@ function performRedPunch() {
           else if (e.type === "boss") score += 100;
           else if (e.type === "mini-boss") score += 50;
         }
-        // If the killed enemy is a reflector we also want to drop health AND reflect power-up
         if (e.type === "reflector" && !e.fromBoss) {
           spawnPowerUp(e.x, e.y, "health");
           spawnPowerUp(e.x, e.y, "reflect");
@@ -184,7 +172,6 @@ function performRedPunch() {
     }
   });
 
-  // Visual pulse
   redPunchEffects.push({
     x: goldStar.x,
     y: goldStar.y,
@@ -195,7 +182,6 @@ function performRedPunch() {
     color: "rgba(255,100,0,0.25)"
   });
 
-  // Optional central explosion flash for feedback
   if (goldStar.redPunchLevel >= 3) {
     createExplosion(goldStar.x, goldStar.y, "red");
   }
@@ -228,8 +214,8 @@ function updateGoldStar() {
           score += 5;
         }
         else if (pu.type === "reflect") {
-          // one-charge reflect ability
           goldStar.reflectAvailable = true;
+          player.reflectAvailable = true;
           createExplosion(pu.x, pu.y, "magenta");
           score += 12;
         }
@@ -240,11 +226,9 @@ function updateGoldStar() {
     return;
   }
 
-  // SMART AVOIDANCE - check for nearby threats
   let dangerX = 0, dangerY = 0, dangerCount = 0;
   const DANGER_RADIUS = 120;
 
-  // Avoid enemies
   enemies.forEach(e => {
     const dist = Math.hypot(e.x - goldStar.x, e.y - goldStar.y);
     if (dist < DANGER_RADIUS && dist > 0) {
@@ -255,7 +239,6 @@ function updateGoldStar() {
     }
   });
 
-  // Avoid enemy projectiles
   lightning.forEach(l => {
     const dist = Math.hypot(l.x - goldStar.x, l.y - goldStar.y);
     if (dist < DANGER_RADIUS && dist > 0) {
@@ -266,7 +249,6 @@ function updateGoldStar() {
     }
   });
 
-  // Move toward nearest power-up if safe
   let nearest = null, minDist = Infinity;
   for (const pu of powerUps) {
     const dist = Math.hypot(pu.x-goldStar.x, pu.y-goldStar.y);
@@ -276,11 +258,9 @@ function updateGoldStar() {
   let moveX = 0, moveY = 0;
 
   if (dangerCount > 0) {
-    // FLEE from danger
     moveX = dangerX;
     moveY = dangerY;
   } else if (nearest && minDist < 300) {
-    // Move toward power-up
     const dx = nearest.x-goldStar.x, dy = nearest.y-goldStar.y, mag = Math.hypot(dx,dy)||1;
     moveX = dx/mag;
     moveY = dy/mag;
@@ -291,7 +271,6 @@ function updateGoldStar() {
       return;
     }
   } else {
-    // Follow player at safe distance
     const dx = player.x-goldStar.x, dy = player.y-goldStar.y, dist = Math.hypot(dx,dy);
     if (dist > 100) {
       const mag = dist||1;
@@ -300,28 +279,24 @@ function updateGoldStar() {
     }
   }
 
-  // Normalize and apply movement
   const moveMag = Math.hypot(moveX, moveY);
   if (moveMag > 0) {
     goldStar.x += (moveX / moveMag) * goldStar.speed;
     goldStar.y += (moveY / moveMag) * goldStar.speed;
   }
 
-  // Keep in bounds
   goldStar.x = Math.max(50, Math.min(canvas.width-50, goldStar.x));
   goldStar.y = Math.max(50, Math.min(canvas.height-50, goldStar.y));
 
-  // Red punch AoE attack (every 5 seconds)
   if (goldStar.redPunchLevel > 0) {
     goldStar.punchCooldown++;
-    const FRAMES_PER_5S = 60 * 5; // assuming ~60fps
+    const FRAMES_PER_5S = 300;
     if (goldStar.punchCooldown >= FRAMES_PER_5S) {
       goldStar.punchCooldown = 0;
       performRedPunch();
     }
   }
 
-  // Blue cannon attack (unchanged behavior but ensure cooldown resets on respawn)
   if (goldStar.blueCannonnLevel > 0) {
     goldStar.cannonCooldown++;
     if (goldStar.cannonCooldown > 50) {
@@ -511,7 +486,6 @@ function updateEnemies() {
     }
 
     if (e.type === "reflector") {
-      // NEW BEHAVIOR: Shield nearby allies
       let nearestAlly = null, minDist = Infinity;
       enemies.forEach(ally => {
         if (ally !== e && ally.type !== "reflector") {
@@ -521,13 +495,11 @@ function updateEnemies() {
       });
 
       if (nearestAlly) {
-        // Move toward ally to shield them
         const dx = nearestAlly.x - e.x, dy = nearestAlly.y - e.y, dist = Math.hypot(dx,dy)||1;
         e.x += (dx/dist) * e.speed;
         e.y += (dy/dist) * e.speed;
         e.shieldActive = true;
       } else {
-        // Move toward player as fallback
         const dx = player.x - e.x, dy = player.y - e.y, dist = Math.hypot(dx,dy)||1;
         e.x += (dx/dist) * e.speed * 0.5;
         e.y += (dy/dist) * e.speed * 0.5;
@@ -536,7 +508,6 @@ function updateEnemies() {
 
       e.angle = (e.angle||0)+0.1;
 
-      // Reflect nearby bullets
       for (let bi = bullets.length-1; bi >= 0; bi--) {
         const b = bullets[bi];
         const dist = Math.hypot(b.x - e.x, b.y - e.y);
@@ -552,7 +523,6 @@ function updateEnemies() {
       const distToGoldStar = Math.hypot(e.x-goldStar.x, e.y-goldStar.y);
       if (goldStar.alive && distToGoldStar < 30) { goldStar.health -= 15; createExplosion(e.x, e.y, "magenta"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); } }
 
-      // If reflector died here, spawn health pickup and award score (and add reflect power-up)
       if (e.health <= 0) {
         createExplosion(e.x, e.y, "purple");
         if (!e.fromBoss) { score += 20; spawnPowerUp(e.x, e.y, "health"); spawnPowerUp(e.x, e.y, "reflect"); }
@@ -571,16 +541,25 @@ function updateEnemies() {
 function updateLightning() {
   lightning = lightning.filter(l => {
     l.x += l.dx; l.y += l.dy;
-    if (Math.hypot(l.x-player.x, l.y-player.y) < player.size/2) { if (!player.invulnerable) player.health -= l.damage; return false; }
-    // When a lightning projectile would hit the goldStar, check for reflect ability
+    
+    if (Math.hypot(l.x-player.x, l.y-player.y) < player.size/2) {
+      if (player.reflectAvailable) {
+        lightning.push({x: l.x, y: l.y, dx: -l.dx, dy: -l.dy, size: l.size || 6, damage: l.damage || 15});
+        player.reflectAvailable = false;
+        createExplosion(player.x, player.y, "cyan");
+        return false;
+      } else {
+        if (!player.invulnerable) player.health -= l.damage;
+        return false;
+      }
+    }
+    
     if (goldStar.alive && Math.hypot(l.x-goldStar.x, l.y-goldStar.y) < goldStar.size/2) {
       if (goldStar.reflectAvailable) {
-        // reflect this single projectile back
         lightning.push({x: l.x, y: l.y, dx: -l.dx, dy: -l.dy, size: l.size || 6, damage: l.damage || 15});
         goldStar.reflectAvailable = false;
-        // visual cue
         createExplosion(goldStar.x, goldStar.y, "cyan");
-        return false; // remove incoming projectile
+        return false;
       } else {
         goldStar.health -= l.damage;
         if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); }
@@ -631,7 +610,6 @@ function checkBulletCollisions() {
           a.health = (a.health||30) - (b.owner === "player" ? 10 : 6); bullets.splice(bi,1);
           if (a.health <= 0) {
             createExplosion(a.x, a.y, "white");
-            // If the attachment that died was a reflector, spawn a health pickup and reflect power-up
             if (a.type === "reflector" && !a.fromBoss) {
               spawnPowerUp(a.x, a.y, "health");
               spawnPowerUp(a.x, a.y, "reflect");
@@ -654,18 +632,19 @@ function checkBulletCollisions() {
   }
 }
 
-// Only gold star (not player) can pick up power-ups.
-// Gold star retains its slow collect mechanic (collecting when minDist < 25),
-// We removed the instant overlap pickup: goldStar must use the slow collecting mechanic.
 function handlePowerUpCollections() {
-  // Intentionally empty: immediate pickup removed.
-  // Gold star collects via the slow collect mechanic implemented in updateGoldStar().
   return;
 }
 
 function drawPlayer() {
   ctx.fillStyle = (player.invulnerable && Math.floor(Date.now()/100)%2 === 0) ? "rgba(0,255,0,0.5)" : "lime";
   ctx.fillRect(player.x-player.size/2, player.y-player.size/2, player.size, player.size);
+  
+  if (player.reflectAvailable) {
+    ctx.strokeStyle = "cyan";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(player.x, player.y, player.size/2 + 14, 0, Math.PI*2); ctx.stroke();
+  }
 }
 
 function drawBullets() { ctx.fillStyle = "yellow"; bullets.forEach(b => ctx.fillRect(b.x-b.size/2, b.y-b.size/2, b.size, b.size)); }
@@ -716,11 +695,9 @@ function drawTunnels() { tunnels.forEach(t => { if (t.active) { ctx.fillStyle = 
 function drawPowerUps() {
   powerUps.forEach(p => {
     ctx.save(); ctx.translate(p.x, p.y);
-    // All power-ups are circular now:
     if (p.type === "red-punch") {
       ctx.fillStyle = "red";
       ctx.beginPath(); ctx.arc(0, 0, p.size/2, 0, Math.PI*2); ctx.fill();
-      // small fist dot
       ctx.fillStyle = "white"; ctx.fillRect(-2, -6, 4, 4);
     }
     else if (p.type === "blue-cannon") {
@@ -734,7 +711,6 @@ function drawPowerUps() {
       ctx.fillStyle = "white"; ctx.fillRect(-2, -6, 4, 4);
     }
     else if (p.type === "reflect") {
-      // reflector power-up visual
       ctx.fillStyle = "purple";
       ctx.beginPath(); ctx.arc(0, 0, p.size/2, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = "cyan";
@@ -748,9 +724,14 @@ function drawPowerUps() {
 function drawGoldStar() {
   if (!goldStar.alive) return;
   if (goldStar.collecting) {
-    const pulse = Math.sin(goldStar.collectTimer*0.3)*3;
-    ctx.strokeStyle = "yellow"; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(goldStar.x, goldStar.y, goldStar.size/2+10+pulse, 0, Math.PI*2); ctx.stroke();
+    const progress = 1 - (goldStar.collectTimer / 60);
+    const maxRadius = goldStar.size/2 + 18;
+    const currentRadius = goldStar.size/2 + 10 + (progress * 8);
+    ctx.strokeStyle = `rgba(255, 255, 0, ${progress})`;
+    ctx.lineWidth = 3 * progress;
+    ctx.beginPath(); 
+    ctx.arc(goldStar.x, goldStar.y, currentRadius, 0, Math.PI*2); 
+    ctx.stroke();
   }
   ctx.save(); ctx.translate(goldStar.x, goldStar.y); ctx.fillStyle = "gold";
   ctx.beginPath();
@@ -765,7 +746,6 @@ function drawGoldStar() {
   const barWidth = 50; ctx.fillStyle = "gray"; ctx.fillRect(goldStar.x-barWidth/2, goldStar.y-goldStar.size-10, barWidth, 5);
   ctx.fillStyle = "gold"; ctx.fillRect(goldStar.x-barWidth/2, goldStar.y-goldStar.size-10, barWidth*(goldStar.health/goldStar.maxHealth), 5);
 
-  // small indicator for reflect availability
   if (goldStar.reflectAvailable) {
     ctx.strokeStyle = "cyan";
     ctx.lineWidth = 2;
@@ -787,17 +767,24 @@ function drawUI() {
   ctx.fillStyle = "gray"; ctx.fillRect(20, 20, 200, 20); ctx.fillStyle = "lime"; ctx.fillRect(20, 20, 200*Math.max(0, player.health/player.maxHealth), 20);
   ctx.strokeStyle = "black"; ctx.strokeRect(20, 20, 200, 20); ctx.fillStyle = "white"; ctx.font = "20px Arial";
   ctx.fillText(`Score: ${score}`, 20, 60); ctx.fillText(`Wave: ${wave+1}`, 20, 90); ctx.fillText(`Lives: ${player.lives}`, 20, 120);
+  ctx.fillText(`Player Reflect: ${player.reflectAvailable ? "READY (1 hit)" : "none"}`, 20, 150);
   if (goldStar.alive) {
-    ctx.fillText(`Gold Star - Red Power Lv${goldStar.redPunchLevel} (${goldStar.redKills}/${Math.ceil((goldStar.redKills+1)/5)*5})`, 20, 150);
-    ctx.fillText(`Gold Star - Blue Power Lv${goldStar.blueCannonnLevel} (${goldStar.blueKills}/${Math.ceil((goldStar.blueKills+1)/5)*5})`, 20, 180);
-    ctx.fillText(`Reflect: ${goldStar.reflectAvailable ? "READY (1 hit)" : "none"}`, 20, 210);
+    ctx.fillText(`Gold Star - Red Power Lv${goldStar.redPunchLevel} (${goldStar.redKills}/${Math.ceil((goldStar.redKills+1)/5)*5})`, 20, 180);
+    ctx.fillText(`Gold Star - Blue Power Lv${goldStar.blueCannonnLevel} (${goldStar.blueKills}/${Math.ceil((goldStar.blueKills+1)/5)*5})`, 20, 210);
+    ctx.fillText(`GS Reflect: ${goldStar.reflectAvailable ? "READY (1 hit)" : "none"}`, 20, 240);
   } else {
     ctx.fillStyle = "red";
-    ctx.fillText(`Gold Star: DESTROYED - Respawning in ${Math.ceil((300-goldStar.respawnTimer)/60)}s`, 20, 150);
+    ctx.fillText(`Gold Star: DESTROYED - Respawning in ${Math.ceil((300-goldStar.respawnTimer)/60)}s`, 20, 180);
   }
   if (waveTransition) {
-    ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(canvas.width/2-160, canvas.height/2-40, 320, 80);
-    ctx.fillStyle = "white"; ctx.font = "24px Arial"; ctx.fillText("Wave Complete! Spawning next...", canvas.width/2-150, canvas.height/2);
+    const timeRemaining = Math.ceil((WAVE_BREAK_MS - waveTransitionTimer * (1000/60)) / 1000);
+    ctx.fillStyle = "rgba(0,0,0,0.6)"; 
+    ctx.fillRect(canvas.width/2-200, canvas.height/2-60, 400, 120);
+    ctx.fillStyle = "white"; 
+    ctx.font = "28px Arial"; 
+    ctx.fillText("WAVE CLEARED!", canvas.width/2-100, canvas.height/2-20);
+    ctx.font = "24px Arial";
+    ctx.fillText(`Next wave in ${timeRemaining}s`, canvas.width/2-110, canvas.height/2+20);
   }
 }
 
@@ -833,9 +820,21 @@ function spawnWave(waveIndex) {
 
 function tryAdvanceWave() {
   if (enemies.length === 0 && diamonds.length === 0 && tunnels.length === 0 && !waveTransition) {
-    if (wave >= waves.length-1) { waveTransition = true; return; }
+    if (wave >= waves.length-1) { waveTransition = true; waveTransitionTimer = 0; return; }
     waveTransition = true;
-    setTimeout(() => { wave++; spawnWave(wave); waveTransition = false; }, WAVE_BREAK_MS);
+    waveTransitionTimer = 0;
+  }
+  
+  if (waveTransition) {
+    waveTransitionTimer++;
+    if (waveTransitionTimer >= WAVE_BREAK_MS / (1000/60)) {
+      wave++;
+      if (wave < waves.length) {
+        spawnWave(wave);
+      }
+      waveTransition = false;
+      waveTransitionTimer = 0;
+    }
   }
 }
 
@@ -855,7 +854,6 @@ function gameLoop() {
   handleShooting(); updateBullets(); updateEnemies(); updateLightning(); checkBulletCollisions();
   updateExplosions(); updateTunnels(); updatePowerUps();
 
-  // Only gold star may pick up power-ups now (slow collect only)
   handlePowerUpCollections();
 
   updateGoldStar(); updateRedPunchEffects();
@@ -874,4 +872,7 @@ function gameLoop() {
 }
 
 window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
-wave = 0; waveTransition = false; spawnWave(wave); gameLoop();
+wave = 0; waveTransition = false; waveTransitionTimer = 0; spawnWave(wave); gameLoop();
+  </script>
+</body>
+</html>
