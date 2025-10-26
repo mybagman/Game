@@ -1,11 +1,12 @@
-// contents of file
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
-// NOTE: initialization deferred until window load to ensure the DOM (gameCanvas) exists.
+// Fixed script.js
+// - Removed duplicate canvas/ctx declarations and early DOM access
+// - Ensure initialization happens on window.load
+// - Start the game immediately (skips auto cinematic) so the game "runs only"
+// - Fixed duplicate player/goldStar property definitions and ensured positions are set after canvas is available
+// You can still call startCutscene() manually if you want the intro.
 
 let canvas, ctx;
+
 function ensureCanvas() {
   canvas = document.getElementById("gameCanvas");
   if (!canvas) {
@@ -26,15 +27,23 @@ function init() {
   window.addEventListener('resize', () => {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    // keep UI/game elements positioned relative to new canvas size if necessary
   });
 
-  // start cinematic at load so the intro runs before waves start
+  // initialize positions now that canvas exists
+  player.x = canvas.width / 2;
+  player.y = canvas.height / 2;
+  goldStar.x = canvas.width / 4;
+  goldStar.y = canvas.height / 2;
+
+  // start the game immediately (no automatic cutscene)
   wave = 0; waveTransition = false; waveTransitionTimer = 0;
-  startCutscene();
+  spawnWave(wave);
+  gameLoop();
 }
 
 // ==============================
-// Enhanced Cinematic cutscene system
+// Enhanced Cinematic cutscene system (kept but not auto-started)
 // ==============================
 
 let cinematic = {
@@ -127,7 +136,7 @@ function drawEnemyScene(t, p) {
   ctx.strokeStyle = `rgba(255,50,50,${0.6 + Math.sin(t * 0.002) * 0.3})`;
   ctx.lineWidth = 4;
   ctx.shadowBlur = 40;
-  ctx.shadowColor = "red";
+  ctx.shadowColor = "White";
   
   const dSize = 150 + pulse;
   ctx.beginPath();
@@ -262,9 +271,9 @@ function makeCutsceneScenes() {
     draw: (t, p) => {
       drawEnemyScene(t, p);
       drawTextBox([
-        'Commander: "As you can see, the autonomous',
-        'mother ships are out of control. They have invaded',
-        'our planet and taken out our command centers."'
+        'Commander: "They Struck without warning',
+        'Earth has been overrun',
+        'The Mother Diamond must be stopped!"'
       ], 50, canvas.height - 170, canvas.width - 100);
     }
   });
@@ -279,13 +288,13 @@ function makeCutsceneScenes() {
       const name = cinematic.playerName || "Pilot";
       drawTextBox([
         `Commander: "We're the last ones left, ${name}.`,
-        'Make your way to the Mother Diamond.',
-        'It\'s coordinating the attacks. You must destroy it."'
+        'You have to take out the Mother Diamond.',
+        'Then We can take back Earth."'
       ], 50, canvas.height - 170, canvas.width - 100);
     }
   });
 
-  // Scene 4: "Ikimus! I'm going!" - Gold Star launch
+  // Scene 4: "I'm going!" - Gold Star launch
   scenes.push({
     duration: 3500,
     draw: (t, p) => {
@@ -293,8 +302,8 @@ function makeCutsceneScenes() {
       
       if (p < 0.3) {
         drawTextBox([
-          'Pilot: "Ikimus! I\'m going!"',
-          'Commander: "Good luck, pilot."'
+          'Pilot: "I\'m going!"',
+          'Commander: "Use the Gold Star its your only hope!"'
         ], 50, canvas.height - 140, 520);
       }
     }
@@ -333,7 +342,9 @@ let cinematicIndex = 0;
 let cinematicStartTime = 0;
 
 function startCutscene() {
-  cinematic.playerName = prompt("Enter your pilot name:", "Pilot") || "Pilot";
+  // optional: request a name if you want the cinematic personalization
+  const name = prompt ? (prompt("Enter your pilot name:", "Pilot") || "Pilot") : "Pilot";
+  cinematic.playerName = name;
   cinematic.playing = true;
   cinematicScenes = makeCutsceneScenes();
   cinematicIndex = 0;
@@ -384,6 +395,9 @@ function endCutscene() {
   spawnWave(wave);
   gameLoop();
 }
+
+// ======= Game state and systems =======
+
 let keys = {}, bullets = [], enemies = [], lightning = [], explosions = [], diamonds = [], powerUps = [], tunnels = [];
 let redPunchEffects = [];
 let score = 0, wave = 0, minionsToAdd = [];
@@ -648,16 +662,15 @@ function drawGoldStarAura(ctx) {
 }
 // ======== END GOLD STAR AURA SYSTEM ========
 
+// Player and GoldStar objects (single, corrected declarations)
 let player = {
-  x: canvas.width/2, y: canvas.height/2, size: 30, speed: 5,
-  x: (canvas ? canvas.width/2 : 800/2), y: (canvas ? canvas.height/2 : 600/2), size: 30, speed: 5,
+  x: 0, y: 0, size: 30, speed: 5,
   health: 100, maxHealth: 100, lives: 3, invulnerable: false, invulnerableTimer: 0,
   reflectAvailable: false, fireRateBoost: 1
 };
 
 let goldStar = {
-  x: canvas.width/4, y: canvas.height/2, size: 35, speed: 3,
-  x: (canvas ? canvas.width/4 : 800/4), y: (canvas ? canvas.height/2 : 600/2), size: 35, speed: 3,
+  x: 0, y: 0, size: 35, speed: 3,
   health: 150, maxHealth: 150, alive: true, redPunchLevel: 0, blueCannonnLevel: 0,
   redKills: 0, blueKills: 0, punchCooldown: 0, cannonCooldown: 0,
   collecting: false, collectTimer: 0, targetPowerUp: null, respawnTimer: 0,
@@ -1838,9 +1851,3 @@ function gameLoop() {
     }
   } else requestAnimationFrame(gameLoop);
 }
-
-window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
-
-// start cinematic at load so the intro runs before waves start
-wave = 0; waveTransition = false; waveTransitionTimer = 0;
-startCutscene();
