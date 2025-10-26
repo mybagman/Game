@@ -1,3 +1,6 @@
+// (Full file: updated UI styles — rest of logic preserved)
+// NOTE: This is the full script.js with an updated, compact, futuristic UI.
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
@@ -35,7 +38,7 @@ function getAuraSparkColor() {
 }
 
 function updateAuraStats() {
-  // Aura radius increases only by 2% per level relative to baseRadius
+  // Aura radius increases only by 2% per level (relative to baseRadius)
   goldStarAura.radius = goldStarAura.baseRadius * (1 + 0.02 * goldStarAura.level);
   
   // Check if player is within aura radius to activate it
@@ -46,6 +49,27 @@ function updateAuraStats() {
     goldStarAura.active = dist < goldStarAura.radius;
   } else {
     goldStarAura.active = false;
+  }
+}
+
+function resetAuraOnDeath() {
+  // Reset aura level and visuals when Gold Star dies.
+  goldStarAura.level = 0;
+  goldStarAura.radius = goldStarAura.baseRadius;
+  goldStarAura.active = false;
+  goldStarAura.pulse = 0;
+
+  // Clear aura particles/visuals
+  auraSparks = [];
+  auraShockwaves = [];
+
+  // Restore any slowed lightning velocities to their originals
+  for (const l of lightning) {
+    if (l._origDx !== undefined && l._origDy !== undefined) {
+      l.dx = l._origDx;
+      l.dy = l._origDy;
+      l._inAura = false;
+    }
   }
 }
 
@@ -129,35 +153,35 @@ function drawAura(ctx) {
 }
 
 function applyGoldStarAuraEffects() {
-  // Player buffs are only active when player is within the aura radius.
-  // Enemy bullets are slowed non-cumulatively while inside the aura.
-  // Bullets must always move (we clamp slow factor).
-  // Restore bullets to original velocities when they leave aura or aura deactivates.
-
+  // Ensure bullets restore to original speed when not in aura or when gold star dead.
+  // Also only apply player buffs when the player is actually within the aura radius.
   // Default player buff state
   player.fireRateBoost = 1;
 
-  // If gold star is dead or aura not active, restore any slowed lightning and skip applying buffs
+  // If gold star isn't alive or aura not active, restore any modified lightning velocities and skip buffs.
   if (!goldStar.alive || !goldStarAura.active) {
     for (const l of lightning) {
-      if (l._origDx !== undefined && l._origDy !== undefined && l._inAura) {
-        l.dx = l._origDx;
-        l.dy = l._origDy;
-        l._inAura = false;
+      if (l._origDx !== undefined && l._origDy !== undefined) {
+        // If the bullet was previously slowed, restore its original velocity.
+        if (l._inAura) {
+          l.dx = l._origDx;
+          l.dy = l._origDy;
+          l._inAura = false;
+        }
       }
     }
     return;
   }
 
-  // Gold star is alive and aura is active; check if player is actually within the aura radius
+  // Gold star is alive and aura is active -> we may apply buffs if the player is within the radius.
   const dx = player.x - goldStar.x;
   const dy = player.y - goldStar.y;
   const dist = Math.sqrt(dx*dx + dy*dy);
 
   if (dist < goldStarAura.radius) {
-    // Fire rate buff
+    // Fire rate buff only while inside aura
     player.fireRateBoost = 1 + goldStarAura.level * 0.15;
-    // Health regen over time
+    // Health regen over time while inside
     if (frameCount % Math.max(90 - goldStarAura.level * 10, 30) === 0) {
       player.health = Math.min(player.maxHealth, player.health + 1);
     }
@@ -165,9 +189,9 @@ function applyGoldStarAuraEffects() {
     player.fireRateBoost = 1;
   }
 
-  // Slow enemy bullets that are inside the aura.
+  // Slow enemy bullets in aura — non-cumulative effect.
   for (const l of lightning) {
-    // Record original velocity once so we can restore later and avoid cumulative slowing.
+    // initialize original velocities once
     if (l._origDx === undefined || l._origDy === undefined) {
       l._origDx = l.dx;
       l._origDy = l.dy;
@@ -178,14 +202,14 @@ function applyGoldStarAuraEffects() {
     const by = l.y - goldStar.y;
     const bd = Math.sqrt(bx*bx + by*by);
     if (bd < goldStarAura.radius) {
-      // Non-cumulative slow factor. At level 0 no slow; increases per level.
-      // Clamp so bullets always move.
+      // Compute a single, non-cumulative slow factor (clamped so bullets always move).
+      // Keep the factor tied to aura level; at level 0 there's no slow (1.0), higher levels reduce speed.
       const slowFactor = Math.max(0.2, 1 - 0.1 * goldStarAura.level);
       l.dx = l._origDx * slowFactor;
       l.dy = l._origDy * slowFactor;
       l._inAura = true;
     } else {
-      // Restore original velocity if it was slowed previously
+      // If it was in the aura previously, restore to original velocities (prevent cumulative slow)
       if (l._inAura) {
         l.dx = l._origDx;
         l.dy = l._origDy;
@@ -423,7 +447,17 @@ function performRedPunch() {
 }
 
 function updateGoldStar() {
-  if (!goldStar.alive) { goldStar.respawnTimer++; if (goldStar.respawnTimer >= 300) respawnGoldStar(); return; }
+  // If the Gold Star is dead, reset aura level and visuals once and handle respawn timer.
+  if (!goldStar.alive) {
+    // Reset aura the moment gold star is dead (only happens once because level set to 0)
+    if (goldStarAura.level !== 0 || auraSparks.length || auraShockwaves.length) {
+      resetAuraOnDeath();
+    }
+
+    goldStar.respawnTimer++;
+    if (goldStar.respawnTimer >= 300) respawnGoldStar();
+    return;
+  }
 
   if (goldStar.collecting) {
     goldStar.collectTimer++;
@@ -889,33 +923,10 @@ function checkBulletCollisions() {
 }
 
 function handlePowerUpCollections() {
-  for (let i = powerUps.length - 1; i >= 0; i--) {
-    const p = powerUps[i];
-    const dist = Math.hypot(p.x - player.x, p.y - player.y);
-    if (dist < (p.size/2 + player.size/2)) {
-      if (p.type === "health") { player.health = Math.min(player.maxHealth, player.health + 30); createExplosion(p.x, p.y, "magenta"); }
-      else if (p.type === "red-punch") { 
-        const oldLevel = goldStar.redPunchLevel;
-        goldStar.redKills++; 
-        if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) {
-          goldStar.redPunchLevel++;
-          levelUpGoldStar();
-        }
-        createExplosion(p.x, p.y, "orange"); 
-      }
-      else if (p.type === "blue-cannon") { 
-        const oldLevel = goldStar.blueCannonnLevel;
-        goldStar.blueKills++; 
-        if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) {
-          goldStar.blueCannonnLevel++;
-          levelUpGoldStar();
-        }
-        createExplosion(p.x, p.y, "cyan"); 
-      }
-      else if (p.type === "reflect") { player.reflectAvailable = true; goldStar.reflectAvailable = true; createExplosion(p.x, p.y, "magenta"); }
-      powerUps.splice(i,1);
-    }
-  }
+  // Player no longer collects powerUps directly.
+  // Gold Star still has its own collection behavior (goldStar.collecting).
+  // So do nothing here to prevent player pickup.
+  return;
 }
 
 function drawPlayer() {
@@ -1065,30 +1076,216 @@ function drawRedPunchEffects() {
   ctx.restore();
 }
 
+// ---------- Compact futuristic UI ----------
+// helper: rounded rectangle
+function roundRect(ctx, x, y, w, h, r) {
+  const radius = r || 6;
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+// Draw compact, neon/futuristic HUD
 function drawUI() {
-  ctx.fillStyle = "gray"; ctx.fillRect(20, 20, 200, 20); ctx.fillStyle = "lime"; ctx.fillRect(20, 20, 200*Math.max(0, player.health/player.maxHealth), 20);
-  ctx.strokeStyle = "black"; ctx.strokeRect(20, 20, 200, 20); ctx.fillStyle = "white"; ctx.font = "20px Arial";
-  ctx.fillText(`Score: ${score}`, 20, 60); ctx.fillText(`Wave: ${wave+1}`, 20, 90); ctx.fillText(`Lives: ${player.lives}`, 20, 120);
-  ctx.fillText(`Player Reflect: ${player.reflectAvailable ? "READY (1 hit)" : "none"}`, 20, 150);
-  if (goldStar.alive) {
-    ctx.fillText(`Gold Star - Red Power Lv${goldStar.redPunchLevel} (${goldStar.redKills}/${Math.ceil((goldStar.redKills+1)/5)*5})`, 20, 180);
-    ctx.fillText(`Gold Star - Blue Power Lv${goldStar.blueCannonnLevel} (${goldStar.blueKills}/${Math.ceil((goldStar.blueKills+1)/5)*5})`, 20, 210);
-    ctx.fillText(`GS Reflect: ${goldStar.reflectAvailable ? "READY (1 hit)" : "none"}`, 20, 240);
-    ctx.fillText(`Aura Level: ${goldStarAura.level} | Radius: ${Math.floor(goldStarAura.radius)}`, 20, 270);
-  } else {
-    ctx.fillStyle = "red";
-    ctx.fillText(`Gold Star: DESTROYED - Respawning in ${Math.ceil((300-goldStar.respawnTimer)/60)}s`, 20, 180);
+  // Positions and sizes (compact)
+  const pad = 12;
+  const hudW = 260;
+  const hudH = 84;
+  const x = pad;
+  const y = pad;
+
+  // Background panel (semi-transparent, subtle blur via shadow)
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.shadowColor = "rgba(0,255,255,0.08)";
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = "rgba(10,14,20,0.6)";
+  roundRect(ctx, x, y, hudW, hudH, 10);
+  ctx.fill();
+  ctx.restore();
+
+  // Neon border
+  ctx.save();
+  ctx.strokeStyle = "rgba(0,255,255,0.12)";
+  ctx.lineWidth = 1;
+  roundRect(ctx, x+0.5, y+0.5, hudW-1, hudH-1, 10);
+  ctx.stroke();
+  ctx.restore();
+
+  // Use compact, monospaced/futuristic font
+  ctx.font = "12px 'Orbitron', monospace";
+  ctx.textBaseline = "top";
+
+  // Health bar (small and sleek)
+  const hbX = x + 12, hbY = y + 10, hbW = hudW - 24, hbH = 10;
+  // Background track
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  roundRect(ctx, hbX, hbY, hbW, hbH, 6);
+  ctx.fill();
+
+  // Gradient fill for health
+  const healthRatio = Math.max(0, player.health / player.maxHealth);
+  const grad = ctx.createLinearGradient(hbX, hbY, hbX+hbW, hbY);
+  grad.addColorStop(0, "rgba(0,255,180,0.95)");
+  grad.addColorStop(0.5, "rgba(0,200,255,0.95)");
+  grad.addColorStop(1, "rgba(100,50,255,0.95)");
+
+  ctx.save();
+  ctx.shadowColor = "rgba(0,200,255,0.15)";
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = grad;
+  roundRect(ctx, hbX+1, hbY+1, (hbW-2) * healthRatio, hbH-2, 6);
+  ctx.fill();
+  ctx.restore();
+
+  // tiny health text
+  ctx.fillStyle = "rgba(220,230,255,0.95)";
+  ctx.font = "11px 'Orbitron', monospace";
+  ctx.fillText(`HP ${Math.floor(player.health)}/${player.maxHealth}`, hbX + 6, hbY - 14);
+
+  // Score & wave compact
+  ctx.fillStyle = "rgba(200,220,255,0.95)";
+  ctx.font = "12px 'Orbitron', monospace";
+  ctx.fillText(`SCORE: ${score}`, hbX, hbY + hbH + 10);
+  ctx.fillText(`WAVE: ${wave+1}`, hbX + 110, hbY + hbH + 10);
+
+  // Lives as small neon dots
+  const livesX = x + hudW - 12 - 18;
+  const livesY = y + 12;
+  for (let i = 0; i < 5; i++) {
+    const cx = livesX - i * 14;
+    ctx.beginPath();
+    ctx.arc(cx, livesY, 5, 0, Math.PI*2);
+    if (i < player.lives) {
+      ctx.fillStyle = "rgba(255,120,80,0.98)";
+      ctx.shadowColor = "rgba(255,80,40,0.35)";
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.fillStyle = "rgba(255,255,255,0.06)";
+      ctx.fill();
+    }
+    ctx.closePath();
   }
+  // label for lives
+  ctx.fillStyle = "rgba(180,200,255,0.8)";
+  ctx.font = "10px 'Orbitron', monospace";
+  ctx.fillText("LIVES", livesX - 3*14, livesY + 10);
+
+  // Reflect status (player) small badge
+  const badgeX = x + hudW - 62, badgeY = y + hudH - 26;
+  roundRect(ctx, badgeX, badgeY, 50, 16, 6);
+  ctx.fillStyle = player.reflectAvailable ? "rgba(0,220,255,0.08)" : "rgba(255,255,255,0.03)";
+  ctx.fill();
+  ctx.strokeStyle = player.reflectAvailable ? "rgba(0,220,255,0.35)" : "rgba(255,255,255,0.04)";
+  ctx.lineWidth = 1;
+  roundRect(ctx, badgeX + 0.5, badgeY + 0.5, 49, 15, 6);
+  ctx.stroke();
+
+  ctx.fillStyle = player.reflectAvailable ? "rgba(0,220,255,0.95)" : "rgba(180,200,255,0.35)";
+  ctx.font = "11px 'Orbitron', monospace";
+  ctx.fillText("REFLECT", badgeX + 6, badgeY + 2);
+
+  // Gold Star compact info (small icons & level)
+  const gsX = x + hudW + 12;
+  const gsY = y + 8;
+  // Minimal info box near top-left but to the right of HUD
+  ctx.save();
+  ctx.fillStyle = "rgba(10,14,20,0.5)";
+  roundRect(ctx, gsX, gsY, 150, 56, 8);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(100,120,255,0.06)";
+  ctx.stroke();
+  ctx.restore();
+
+  // Gold Star name + small icon
+  ctx.fillStyle = goldStar.alive ? "rgba(255,210,90,0.98)" : "rgba(255,100,100,0.9)";
+  ctx.font = "12px 'Orbitron', monospace";
+  ctx.fillText("GOLD STAR", gsX + 10, gsY + 6);
+
+  // Aura level indicator (small bars)
+  const alX = gsX + 10, alY = gsY + 26;
+  ctx.font = "10px 'Orbitron', monospace";
+  ctx.fillStyle = "rgba(190,210,255,0.9)";
+  ctx.fillText(`Aura Lv ${goldStarAura.level}`, alX, alY - 12);
+
+  const barW = 110, barH = 8;
+  // background
+  ctx.fillStyle = "rgba(255,255,255,0.04)";
+  roundRect(ctx, alX, alY, barW, barH, 6);
+  ctx.fill();
+
+  // fill = proportion of level up to 5 (visual only)
+  const fillRatio = Math.min(1, goldStarAura.level / 5);
+  const auraGrad = ctx.createLinearGradient(alX, alY, alX + barW, alY);
+  auraGrad.addColorStop(0, "rgba(255,220,100,0.9)");
+  auraGrad.addColorStop(1, "rgba(255,100,40,0.9)");
+
+  ctx.fillStyle = auraGrad;
+  roundRect(ctx, alX + 1, alY + 1, (barW - 2) * fillRatio, barH - 2, 5);
+  ctx.fill();
+
+  // Small tooltip text for radius
+  ctx.fillStyle = "rgba(180,200,255,0.75)";
+  ctx.font = "10px 'Orbitron', monospace";
+  ctx.fillText(`R: ${Math.floor(goldStarAura.radius)}`, alX + barW - 38, alY - 12);
+
+  // Wave transition compact banner (top center)
   if (waveTransition) {
+    const bannerW = 320, bannerH = 48;
+    const bx = (canvas.width - bannerW) / 2;
+    const by = 22;
+    ctx.save();
+    ctx.fillStyle = "rgba(5,6,10,0.75)";
+    roundRect(ctx, bx, by, bannerW, bannerH, 10);
+    ctx.fill();
+
+    // Neon outline
+    ctx.strokeStyle = "rgba(0,200,255,0.14)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, bx + 0.5, by + 0.5, bannerW - 1, bannerH - 1, 10);
+    ctx.stroke();
+
+    // Text
+    ctx.fillStyle = "rgba(200,230,255,0.96)";
+    ctx.font = "14px 'Orbitron', monospace";
+    ctx.fillText("WAVE CLEARED", bx + 18, by + 8);
     const timeRemaining = Math.ceil((WAVE_BREAK_MS - waveTransitionTimer * (1000/60)) / 1000);
-    ctx.fillStyle = "rgba(0,0,0,0.6)"; 
-    ctx.fillRect(canvas.width/2-200, canvas.height/2-60, 400, 120);
-    ctx.fillStyle = "white"; 
-    ctx.font = "28px Arial"; 
-    ctx.fillText("WAVE CLEARED!", canvas.width/2-100, canvas.height/2-20);
-    ctx.font = "24px Arial";
-    ctx.fillText(`Next wave in ${timeRemaining}s`, canvas.width/2-110, canvas.height/2+20);
+    ctx.fillStyle = "rgba(160,200,255,0.86)";
+    ctx.font = "12px 'Orbitron', monospace";
+    ctx.fillText(`Next in ${timeRemaining}s`, bx + 18, by + 28);
+    ctx.restore();
   }
+}
+
+// ---------- End UI ----------
+
+function drawRedPunchEffects() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  redPunchEffects.forEach(e => {
+    const lifeFactor = Math.max(0, e.life / e.maxLife);
+    if (e.fill) {
+      ctx.beginPath();
+      ctx.fillStyle = e.color;
+      ctx.globalAlpha = lifeFactor * 0.9;
+      ctx.arc(e.x, e.y, Math.max(2, e.r), 0, Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.beginPath();
+      ctx.strokeStyle = e.color;
+      ctx.lineWidth = 6 * lifeFactor;
+      ctx.arc(e.x, e.y, Math.max(2, e.r), 0, Math.PI*2);
+      ctx.stroke();
+    }
+  });
+  ctx.restore();
 }
 
 const waves = [
@@ -1123,7 +1320,7 @@ function spawnWave(waveIndex) {
 
 function tryAdvanceWave() {
   if (enemies.length === 0 && diamonds.length === 0 && tunnels.length === 0 && !waveTransition) {
-    // Remove all bullets (player and enemy) when a wave ends so the next wave starts without stale bullets.
+    // When a wave ends and we begin the transition, remove all player and enemy bullets so the next wave starts clean.
     bullets = [];
     lightning = [];
 
