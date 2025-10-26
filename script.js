@@ -29,51 +29,48 @@ function init() {
   startCutscene();
 }
 
+// NOTE: initialization deferred until window load to ensure the DOM (gameCanvas) exists.
+
+let canvas, ctx;
+function ensureCanvas() {
+  canvas = document.getElementById("gameCanvas");
+  if (!canvas) {
+    console.error("Canvas element with id 'gameCanvas' not found.");
+    return false;
+  }
+  ctx = canvas.getContext("2d");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  return true;
+}
+
+window.addEventListener('load', init);
+
+function init() {
+  if (!ensureCanvas()) return;
+
+  window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  });
+
+  wave = 0; waveTransition = false; waveTransitionTimer = 0;
+  startCutscene();
+}
+
 // ==============================
-// Cinematic cutscene system (with sprite launch)
+// Enhanced Cinematic cutscene system
 // ==============================
 
 let cinematic = {
   playing: false,
-  playerName: "Pilot",
-  images: {
-    launch: null,
-    commander: null,
-    commanderClose: null,
-    schematic: null,
-    diamond: null,
-    greenSquare: null,
-    launchSprite: null // new sprite animation
-  }
+  playerName: "Pilot"
 };
 
-// Replace these with your own assets
-const cinematicImagePaths = {
-  launch: "assets/launch_hangar.jpg",
-  commander: "assets/commander_full.png",
-  commanderClose: "assets/commander_face.png",
-  schematic: "assets/schematic.png",
-  diamond: "assets/diamond.png",
-  greenSquare: "assets/green_square.png",
-  launchSprite: "assets/green_launch_sprite.png" // <-- sprite sheet (8 frames wide)
-};
-
-function loadCinematicImages(paths, onDone) {
-  const keys = Object.keys(paths);
-  let loaded = 0;
-  keys.forEach(k => {
-    const img = new Image();
-    img.onload = () => { cinematic.images[k] = img; loaded++; if (loaded === keys.length) onDone(); };
-    img.onerror = () => { cinematic.images[k] = null; loaded++; if (loaded === keys.length) onDone(); };
-    img.src = paths[k];
-  });
-}
-
-// helper text box
 function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left") {
   ctx.save();
   ctx.font = "20px Arial";
-  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillStyle = "rgba(0,0,0,0.8)";
   const padding = 12;
   const h = lines.length * lineHeight + padding*2;
   ctx.fillRect(x, y - padding, maxW, h);
@@ -85,117 +82,271 @@ function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left") {
   ctx.restore();
 }
 
+// Draw launch bay scene with green square
+function drawLaunchBayScene() {
+  // Dark space background
+  ctx.fillStyle = "#000814";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Stars
+  for (let i = 0; i < 100; i++) {
+    const x = (i * 137) % canvas.width;
+    const y = (i * 241) % canvas.height;
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.fillRect(x, y, 2, 2);
+  }
+  
+  // Launch bay structure
+  ctx.fillStyle = "#1a2332";
+  ctx.fillRect(canvas.width * 0.2, canvas.height * 0.3, canvas.width * 0.6, canvas.height * 0.5);
+  
+  // Bay doors
+  ctx.fillStyle = "#0d1520";
+  ctx.fillRect(canvas.width * 0.25, canvas.height * 0.35, canvas.width * 0.5, canvas.height * 0.4);
+  
+  // Grid lines
+  ctx.strokeStyle = "#2a4055";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 10; i++) {
+    const x = canvas.width * 0.25 + (canvas.width * 0.5 / 10) * i;
+    ctx.beginPath();
+    ctx.moveTo(x, canvas.height * 0.35);
+    ctx.lineTo(x, canvas.height * 0.75);
+    ctx.stroke();
+  }
+  
+  // Green Square in center
+  const squareSize = 60;
+  const squareX = canvas.width / 2 - squareSize / 2;
+  const squareY = canvas.height / 2 - squareSize / 2;
+  
+  // Glow effect
+  ctx.shadowBlur = 30;
+  ctx.shadowColor = "lime";
+  ctx.fillStyle = "lime";
+  ctx.fillRect(squareX, squareY, squareSize, squareSize);
+  ctx.shadowBlur = 0;
+}
+
+// Draw ominous enemy scene
+function drawEnemyScene(t, p) {
+  // Deep space background
+  ctx.fillStyle = "#05000a";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Distant stars
+  for (let i = 0; i < 150; i++) {
+    const x = (i * 171) % canvas.width;
+    const y = (i * 293) % canvas.height;
+    const brightness = 0.3 + Math.sin(t * 0.001 + i) * 0.3;
+    ctx.fillStyle = `rgba(255,100,100,${brightness})`;
+    ctx.fillRect(x, y, 1, 1);
+  }
+  
+  // Large ominous diamond in distance
+  ctx.save();
+  ctx.translate(canvas.width * 0.5, canvas.height * 0.35);
+  const pulse = Math.sin(t * 0.003) * 20;
+  ctx.rotate(t * 0.0005);
+  
+  ctx.strokeStyle = `rgba(255,50,50,${0.6 + Math.sin(t * 0.002) * 0.3})`;
+  ctx.lineWidth = 4;
+  ctx.shadowBlur = 40;
+  ctx.shadowColor = "red";
+  
+  const dSize = 150 + pulse;
+  ctx.beginPath();
+  ctx.moveTo(0, -dSize);
+  ctx.lineTo(dSize, 0);
+  ctx.lineTo(0, dSize);
+  ctx.lineTo(-dSize, 0);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+  
+  // Red squares approaching
+  for (let i = 0; i < 5; i++) {
+    const xOffset = Math.sin(t * 0.001 + i) * 100;
+    const yPos = canvas.height * 0.6 + i * 40;
+    const size = 25 + Math.sin(t * 0.002 + i) * 5;
+    
+    ctx.fillStyle = `rgba(255,0,0,${0.6 + Math.sin(t * 0.002 + i) * 0.3})`;
+    ctx.fillRect(canvas.width * 0.3 + xOffset + i * 80, yPos, size, size);
+  }
+  
+  // Cyan triangles
+  for (let i = 0; i < 4; i++) {
+    const xOffset = Math.cos(t * 0.0015 + i) * 120;
+    const yPos = canvas.height * 0.7 + i * 35;
+    const size = 30;
+    
+    ctx.fillStyle = `rgba(0,255,255,${0.5 + Math.cos(t * 0.002 + i) * 0.3})`;
+    ctx.beginPath();
+    ctx.moveTo(canvas.width * 0.6 + xOffset + i * 70, yPos - size/2);
+    ctx.lineTo(canvas.width * 0.6 + xOffset + i * 70 - size/2, yPos + size/2);
+    ctx.lineTo(canvas.width * 0.6 + xOffset + i * 70 + size/2, yPos + size/2);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+// Draw Gold Star launch animation
+function drawGoldStarLaunch(t, p) {
+  ctx.fillStyle = "#000814";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Stars moving past
+  for (let i = 0; i < 100; i++) {
+    const x = ((i * 137) % canvas.width) - p * canvas.width * 0.5;
+    const y = (i * 241) % canvas.height;
+    const speed = 1 + (i % 3);
+    ctx.fillStyle = `rgba(255,255,255,${0.6 - p * 0.4})`;
+    ctx.fillRect(x - speed * p * 200, y, 2 + speed * p * 3, 2);
+  }
+  
+  // Gold Star position (starts center, moves forward)
+  const startX = canvas.width * 0.3;
+  const startY = canvas.height * 0.5;
+  const endX = canvas.width * 0.5;
+  const endY = canvas.height * 0.5;
+  
+  const gsX = startX + (endX - startX) * p;
+  const gsY = startY + (endY - startY) * p;
+  const gsSize = 40 + p * 60;
+  
+  // Engine blast effect (activates halfway through)
+  if (p > 0.4) {
+    const blastIntensity = Math.min(1, (p - 0.4) / 0.3);
+    
+    // Main exhaust trail
+    for (let i = 0; i < 20; i++) {
+      const trailP = i / 20;
+      const tx = gsX - (30 + i * 15) * blastIntensity;
+      const ty = gsY + (Math.random() - 0.5) * 20 * blastIntensity;
+      const tSize = (20 - i) * blastIntensity;
+      
+      ctx.fillStyle = `rgba(255,${150 - i * 7},0,${(1 - trailP) * 0.8})`;
+      ctx.beginPath();
+      ctx.arc(tx, ty, tSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Bright engine core
+    ctx.shadowBlur = 40;
+    ctx.shadowColor = "orange";
+    ctx.fillStyle = `rgba(255,200,0,${blastIntensity})`;
+    ctx.beginPath();
+    ctx.arc(gsX - 25, gsY, 15 * blastIntensity, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+  
+  // Gold Star itself
+  ctx.save();
+  ctx.translate(gsX, gsY);
+  ctx.shadowBlur = 30 + p * 20;
+  ctx.shadowColor = "gold";
+  ctx.fillStyle = "gold";
+  
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+    const radius = i % 2 === 0 ? gsSize / 2 : gsSize / 4;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  
+  // Flash effect near end
+  if (p > 0.85) {
+    const flashIntensity = (p - 0.85) / 0.15;
+    ctx.fillStyle = `rgba(255,255,255,${flashIntensity * 0.9})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
 function makeCutsceneScenes() {
   const scenes = [];
 
-  // Scene 1: Launch bay
+  // Scene 1: Launch bay (silent, just visuals)
   scenes.push({
-    duration: 3000,
-    draw: (t,p) => {
-      if (cinematic.images.launch) ctx.drawImage(cinematic.images.launch, 0, 0, canvas.width, canvas.height);
-      else { ctx.fillStyle = "#001a33"; ctx.fillRect(0,0,canvas.width,canvas.height); }
-      const gx = canvas.width*0.35, gy = canvas.height*0.65;
-      ctx.fillStyle = "lime"; ctx.fillRect(gx-25, gy-25, 50, 50);
-      drawTextBox(["Scene 1 — Launch bay.", "The pilot prepares aboard the ship."], 50, canvas.height - 120, 520);
+    duration: 2500,
+    draw: (t, p) => {
+      drawLaunchBayScene();
+      // No text box
     }
   });
 
-  // Scene 2: Commander briefing
+  // Scene 2: Commander warning about enemies
   scenes.push({
-    duration: 4200,
-    draw: (t,p) => {
-      ctx.fillStyle = "#071020"; ctx.fillRect(0,0,canvas.width,canvas.height);
-      if (cinematic.images.commander) {
-        const img = cinematic.images.commander;
-        const h = Math.min(canvas.height*0.75, img.height);
-        const w = h * (img.width / img.height);
-        ctx.drawImage(img, 60, canvas.height*0.12, w, h);
-      }
+    duration: 4500,
+    draw: (t, p) => {
+      drawEnemyScene(t, p);
       drawTextBox([
-        'Commander: "As you already know,',
-        'the autonomous mother ships are out of control,',
-        'they have invaded our planet and taken out command."'
-      ], 420, canvas.height - 170, 600);
+        'Commander: "As you can see, the autonomous',
+        'mother ships are out of control. They have invaded',
+        'our planet and taken out our command centers."'
+      ], 50, canvas.height - 170, canvas.width - 100);
     }
   });
 
-  // Scene 3: Commander close-up
+  // Scene 3: Commander close-up with mission
   scenes.push({
-    duration: 4200,
-    draw: (t,p) => {
-      ctx.fillStyle = "#080a10"; ctx.fillRect(0,0,canvas.width,canvas.height);
-      if (cinematic.images.commanderClose) {
-        const img = cinematic.images.commanderClose;
-        const w = Math.min(canvas.width*0.45, img.width);
-        const h = w * (img.height / img.width);
-        ctx.drawImage(img, canvas.width*0.05, canvas.height*0.08, w, h);
-      }
+    duration: 4000,
+    draw: (t, p) => {
+      ctx.fillStyle = "#080a10";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
       const name = cinematic.playerName || "Pilot";
       drawTextBox([
         `Commander: "We're the last ones left, ${name}.`,
-        'It’s up to you now."'
-      ], 520, canvas.height - 170, 500);
+        'Make your way to the Mother Diamond.',
+        'It\'s coordinating the attacks. You must destroy it."'
+      ], 50, canvas.height - 170, canvas.width - 100);
     }
   });
 
-  // Scene 4: Schematics
+  // Scene 4: "Ikimus! I'm going!" - Gold Star launch
   scenes.push({
-    duration: 5200,
-    draw: (t,p) => {
-      ctx.fillStyle = "#061020"; ctx.fillRect(0,0,canvas.width,canvas.height);
-      if (cinematic.images.schematic) {
-        const img = cinematic.images.schematic;
-        const w = Math.min(canvas.width*0.45, img.width);
-        const h = w * (img.height / img.width);
-        ctx.drawImage(img, canvas.width*0.05, canvas.height*0.08, w, h);
+    duration: 3500,
+    draw: (t, p) => {
+      drawGoldStarLaunch(t, p);
+      
+      if (p < 0.3) {
+        drawTextBox([
+          'Pilot: "Ikimus! I\'m going!"',
+          'Commander: "Good luck, pilot."'
+        ], 50, canvas.height - 140, 520);
       }
-      if (cinematic.images.diamond) {
-        const img = cinematic.images.diamond;
-        const w = 160, h = 160;
-        ctx.drawImage(img, canvas.width*0.66, canvas.height*0.22, w, h);
-      }
-      drawTextBox([
-        'Commander: "First, we need you to launch the Green Square Mk1."',
-        '"Make your way to the Mother Diamond — it appears to be coordinating the attacks from space."',
-        '"Once you’ve done that, we can attempt landfall."'
-      ], 50, canvas.height - 220, canvas.width - 100, 26);
     }
   });
 
-  // Scene 5: Launch animation with sprite
+  // Scene 5: Final flash and countdown
   scenes.push({
-    duration: 4200,
-    draw: (t,p) => {
-      ctx.fillStyle = "#001218"; ctx.fillRect(0,0,canvas.width,canvas.height);
-
-      // text panel
-      drawTextBox(['Pilot: "Ikimus! I’m going!"', 'Commander: "Good luck, Green Square pilot."'], 60, canvas.height - 160, 520);
-
-      // launch animation
-      const sprite = cinematic.images.launchSprite;
-      const totalFrames = 8;  // adjust based on your sprite sheet
-      const frameW = sprite ? sprite.width / totalFrames : 60;
-      const frameH = sprite ? sprite.height : 60;
-      const frame = Math.floor((t / 100) % totalFrames);
-
-      // position
-      const startX = canvas.width*0.22, startY = canvas.height*0.7;
-      const endX = canvas.width*0.8, endY = canvas.height*0.12;
-      const sx = startX + (endX - startX) * p;
-      const sy = startY + (endY - startY) * p;
-
-      if (sprite) {
-        ctx.drawImage(sprite, frame * frameW, 0, frameW, frameH, sx - 40, sy - 40, 80, 80);
-      } else {
-        // fallback
-        ctx.fillStyle = "lime"; ctx.fillRect(sx-20, sy-20, 40, 40);
+    duration: 2500,
+    draw: (t, p) => {
+      // White flash fading to game ready
+      const fadeOut = 1 - p;
+      ctx.fillStyle = `rgba(255,255,255,${fadeOut * 0.8})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      if (p > 0.4) {
+        const countdown = Math.ceil(2.5 - (p * 2.5));
+        ctx.fillStyle = "white";
+        ctx.font = "48px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("WAVE 1 STARTING IN", canvas.width / 2, canvas.height / 2 - 40);
+        ctx.font = "72px Arial";
+        ctx.fillStyle = countdown <= 1 ? "red" : "yellow";
+        ctx.fillText(countdown.toString(), canvas.width / 2, canvas.height / 2 + 40);
+        ctx.font = "32px Arial";
+        ctx.fillStyle = "cyan";
+        ctx.fillText("PREPARE FOR BATTLE", canvas.width / 2, canvas.height / 2 + 100);
       }
-
-      // exhaust glow
-      ctx.beginPath();
-      ctx.arc(sx-30, sy+25, 20 * (1-p), 0, Math.PI*2);
-      ctx.fillStyle = `rgba(255,150,0,${0.4*(1-p)})`;
-      ctx.fill();
     }
   });
 
@@ -207,17 +358,12 @@ let cinematicIndex = 0;
 let cinematicStartTime = 0;
 
 function startCutscene() {
-  cinematic.playerName = prompt("Enter your name:", "Pilot") || "Pilot";
+  cinematic.playerName = prompt("Enter your pilot name:", "Pilot") || "Pilot";
   cinematic.playing = true;
   cinematicScenes = makeCutsceneScenes();
   cinematicIndex = 0;
   cinematicStartTime = performance.now();
-
-  loadCinematicImages(cinematicImagePaths, () => {
-    // ensure start timestamp is re-set when images finish loading so timing starts cleanly
-    cinematicStartTime = performance.now();
-    requestAnimationFrame(cinematicTick);
-  });
+  requestAnimationFrame(cinematicTick);
 }
 
 function cinematicTick(now) {
@@ -228,12 +374,13 @@ function cinematicTick(now) {
   const sceneElapsed = now - (cinematicStartTime + elapsedBefore);
   const progress = Math.max(0, Math.min(1, sceneElapsed / scene.duration));
 
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   scene.draw(now, progress);
 
-  ctx.fillStyle = "rgba(255,255,255,0.15)";
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
   ctx.font = "14px Arial";
-  ctx.fillText("Press ESC to skip intro", canvas.width - 180, 30);
+  ctx.textAlign = "right";
+  ctx.fillText("Press ESC to skip intro", canvas.width - 20, 30);
 
   if (sceneElapsed >= scene.duration) {
     cinematicIndex++;
@@ -256,7 +403,7 @@ window.addEventListener("keydown", e => {
 
 function endCutscene() {
   ctx.fillStyle = "black";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   wave = 0;
   waveTransition = false;
   spawnWave(wave);
