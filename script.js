@@ -3,6 +3,237 @@ const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
+// ==============================
+// Cinematic cutscene system (with sprite launch)
+// ==============================
+
+let cinematic = {
+  playing: false,
+  playerName: "Pilot",
+  images: {
+    launch: null,
+    commander: null,
+    commanderClose: null,
+    schematic: null,
+    diamond: null,
+    greenSquare: null,
+    launchSprite: null // new sprite animation
+  }
+};
+
+// Replace these with your own assets
+const cinematicImagePaths = {
+  launch: "assets/launch_hangar.jpg",
+  commander: "assets/commander_full.png",
+  commanderClose: "assets/commander_face.png",
+  schematic: "assets/schematic.png",
+  diamond: "assets/diamond.png",
+  greenSquare: "assets/green_square.png",
+  launchSprite: "assets/green_launch_sprite.png" // <-- sprite sheet (8 frames wide)
+};
+
+function loadCinematicImages(paths, onDone) {
+  const keys = Object.keys(paths);
+  let loaded = 0;
+  keys.forEach(k => {
+    const img = new Image();
+    img.onload = () => { cinematic.images[k] = img; loaded++; if (loaded === keys.length) onDone(); };
+    img.onerror = () => { cinematic.images[k] = null; loaded++; if (loaded === keys.length) onDone(); };
+    img.src = paths[k];
+  });
+}
+
+// helper text box
+function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left") {
+  ctx.save();
+  ctx.font = "20px Arial";
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  const padding = 12;
+  const h = lines.length * lineHeight + padding*2;
+  ctx.fillRect(x, y - padding, maxW, h);
+  ctx.fillStyle = "white";
+  ctx.textAlign = align;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], x + 12, y + (i+1)*lineHeight);
+  }
+  ctx.restore();
+}
+
+function makeCutsceneScenes() {
+  const scenes = [];
+
+  // Scene 1: Launch bay
+  scenes.push({
+    duration: 3000,
+    draw: (t,p) => {
+      if (cinematic.images.launch) ctx.drawImage(cinematic.images.launch, 0, 0, canvas.width, canvas.height);
+      else { ctx.fillStyle = "#001a33"; ctx.fillRect(0,0,canvas.width,canvas.height); }
+      const gx = canvas.width*0.35, gy = canvas.height*0.65;
+      ctx.fillStyle = "lime"; ctx.fillRect(gx-25, gy-25, 50, 50);
+      drawTextBox(["Scene 1 — Launch bay.", "The pilot prepares aboard the ship."], 50, canvas.height - 120, 520);
+    }
+  });
+
+  // Scene 2: Commander briefing
+  scenes.push({
+    duration: 4200,
+    draw: (t,p) => {
+      ctx.fillStyle = "#071020"; ctx.fillRect(0,0,canvas.width,canvas.height);
+      if (cinematic.images.commander) {
+        const img = cinematic.images.commander;
+        const h = Math.min(canvas.height*0.75, img.height);
+        const w = h * (img.width / img.height);
+        ctx.drawImage(img, 60, canvas.height*0.12, w, h);
+      }
+      drawTextBox([
+        'Commander: "As you already know,',
+        'the autonomous mother ships are out of control,',
+        'they have invaded our planet and taken out command."'
+      ], 420, canvas.height - 170, 600);
+    }
+  });
+
+  // Scene 3: Commander close-up
+  scenes.push({
+    duration: 4200,
+    draw: (t,p) => {
+      ctx.fillStyle = "#080a10"; ctx.fillRect(0,0,canvas.width,canvas.height);
+      if (cinematic.images.commanderClose) {
+        const img = cinematic.images.commanderClose;
+        const w = Math.min(canvas.width*0.45, img.width);
+        const h = w * (img.height / img.width);
+        ctx.drawImage(img, canvas.width*0.05, canvas.height*0.08, w, h);
+      }
+      const name = cinematic.playerName || "Pilot";
+      drawTextBox([
+        `Commander: "We're the last ones left, ${name}.`,
+        'It’s up to you now."'
+      ], 520, canvas.height - 170, 500);
+    }
+  });
+
+  // Scene 4: Schematics
+  scenes.push({
+    duration: 5200,
+    draw: (t,p) => {
+      ctx.fillStyle = "#061020"; ctx.fillRect(0,0,canvas.width,canvas.height);
+      if (cinematic.images.schematic) {
+        const img = cinematic.images.schematic;
+        const w = Math.min(canvas.width*0.45, img.width);
+        const h = w * (img.height / img.width);
+        ctx.drawImage(img, canvas.width*0.05, canvas.height*0.08, w, h);
+      }
+      if (cinematic.images.diamond) {
+        const img = cinematic.images.diamond;
+        const w = 160, h = 160;
+        ctx.drawImage(img, canvas.width*0.66, canvas.height*0.22, w, h);
+      }
+      drawTextBox([
+        'Commander: "First, we need you to launch the Green Square Mk1."',
+        '"Make your way to the Mother Diamond — it appears to be coordinating the attacks from space."',
+        '"Once you’ve done that, we can attempt landfall."'
+      ], 50, canvas.height - 220, canvas.width - 100, 26);
+    }
+  });
+
+  // Scene 5: Launch animation with sprite
+  scenes.push({
+    duration: 4200,
+    draw: (t,p) => {
+      ctx.fillStyle = "#001218"; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+      // text panel
+      drawTextBox(['Pilot: "Ikimus! I’m going!"', 'Commander: "Good luck, Green Square pilot."'], 60, canvas.height - 160, 520);
+
+      // launch animation
+      const sprite = cinematic.images.launchSprite;
+      const totalFrames = 8;  // adjust based on your sprite sheet
+      const frameW = sprite ? sprite.width / totalFrames : 60;
+      const frameH = sprite ? sprite.height : 60;
+      const frame = Math.floor((t / 100) % totalFrames);
+
+      // position
+      const startX = canvas.width*0.22, startY = canvas.height*0.7;
+      const endX = canvas.width*0.8, endY = canvas.height*0.12;
+      const sx = startX + (endX - startX) * p;
+      const sy = startY + (endY - startY) * p;
+
+      if (sprite) {
+        ctx.drawImage(sprite, frame * frameW, 0, frameW, frameH, sx - 40, sy - 40, 80, 80);
+      } else {
+        // fallback
+        ctx.fillStyle = "lime"; ctx.fillRect(sx-20, sy-20, 40, 40);
+      }
+
+      // exhaust glow
+      ctx.beginPath();
+      ctx.arc(sx-30, sy+25, 20 * (1-p), 0, Math.PI*2);
+      ctx.fillStyle = `rgba(255,150,0,${0.4*(1-p)})`;
+      ctx.fill();
+    }
+  });
+
+  return scenes;
+}
+
+let cinematicScenes = [];
+let cinematicIndex = 0;
+let cinematicStartTime = 0;
+
+function startCutscene() {
+  cinematic.playerName = prompt("Enter your name:", "Pilot") || "Pilot";
+  cinematic.playing = true;
+  cinematicScenes = makeCutsceneScenes();
+  cinematicIndex = 0;
+  cinematicStartTime = performance.now();
+
+  loadCinematicImages(cinematicImagePaths, () => {
+    requestAnimationFrame(cinematicTick);
+  });
+}
+
+function cinematicTick(now) {
+  if (!cinematic.playing) return;
+  const scene = cinematicScenes[cinematicIndex];
+  let elapsedBefore = 0;
+  for (let i = 0; i < cinematicIndex; i++) elapsedBefore += cinematicScenes[i].duration;
+  const sceneElapsed = now - (cinematicStartTime + elapsedBefore);
+  const progress = Math.max(0, Math.min(1, sceneElapsed / scene.duration));
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  scene.draw(now, progress);
+
+  ctx.fillStyle = "rgba(255,255,255,0.15)";
+  ctx.font = "14px Arial";
+  ctx.fillText("Press ESC to skip intro", canvas.width - 180, 30);
+
+  if (sceneElapsed >= scene.duration) {
+    cinematicIndex++;
+    if (cinematicIndex >= cinematicScenes.length) {
+      cinematic.playing = false;
+      endCutscene();
+      return;
+    }
+  }
+
+  requestAnimationFrame(cinematicTick);
+}
+
+window.addEventListener("keydown", e => {
+  if (e.key === "Escape" && cinematic.playing) {
+    cinematic.playing = false;
+    endCutscene();
+  }
+});
+
+function endCutscene() {
+  ctx.fillStyle = "black";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  wave = 0;
+  waveTransition = false;
+  spawnWave(wave);
+  gameLoop();
+}
 let keys = {}, bullets = [], enemies = [], lightning = [], explosions = [], diamonds = [], powerUps = [], tunnels = [];
 let redPunchEffects = [];
 let score = 0, wave = 0, minionsToAdd = [];
