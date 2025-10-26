@@ -13,6 +13,10 @@ let shootCooldown = 0, waveTransition = false, waveTransitionTimer = 0;
 const WAVE_BREAK_MS = 2500;
 let frameCount = 0;
 
+// Pickup constants
+const GOLD_STAR_PICKUP_FRAMES = 30; // 0.5s @ 60fps
+const PICKUP_RADIUS = 60; // radius for grabbing nearby power-ups
+
 // ======== GOLD STAR AURA SYSTEM ========
 const goldStarAura = {
   baseRadius: 50,
@@ -424,7 +428,7 @@ function performRedPunch() {
       color: "rgba(255,160,60,0.95)",
       fill: true
     });
-    for (let i = 0; i < 14; i++) explosions.push({x: goldStar.x, y: goldStar.y, dx:(Math.random()-0.5)*10, dy:(Math.random()-0.5)*10, radius:Math.random()*8+3, color:"rgba(255,140,50,0.95)", life:16});
+    for (let i = 0; i < 14; i++) explosions.push({x: goldStar.x, y: goldStar.y, dx:(Math.random()-0.5)*10, dy:(Math.random()-0.5)*10, radius:Math.random()*8+3, color:"rgba(255,140,50,0.95)", life:16})[...]
   } else {
     redPunchEffects.push({
       x: goldStar.x,
@@ -461,42 +465,47 @@ function updateGoldStar() {
 
   if (goldStar.collecting) {
     goldStar.collectTimer++;
-    if (goldStar.collectTimer >= 60) {
+    if (goldStar.collectTimer >= GOLD_STAR_PICKUP_FRAMES) {
       if (goldStar.targetPowerUp) {
-        const pu = goldStar.targetPowerUp;
-        if (pu.type === "red-punch") {
-          const oldLevel = goldStar.redPunchLevel;
-          goldStar.redKills++;
-          if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) {
-            goldStar.redPunchLevel++;
-            levelUpGoldStar();
+        const centerPU = goldStar.targetPowerUp;
+        // pick up all powerUps within PICKUP_RADIUS of the picked one (including it)
+        const picked = powerUps.filter(p => Math.hypot(p.x - centerPU.x, p.y - centerPU.y) <= PICKUP_RADIUS);
+
+        for (const pu of picked) {
+          if (pu.type === "red-punch") {
+            goldStar.redKills++;
+            if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) {
+              goldStar.redPunchLevel++;
+              levelUpGoldStar();
+            }
+            createExplosion(pu.x, pu.y, "orange");
+            score += 8;
           }
-          createExplosion(pu.x, pu.y, "orange");
-          score += 8;
-        }
-        else if (pu.type === "blue-cannon") {
-          const oldLevel = goldStar.blueCannonnLevel;
-          goldStar.blueKills++;
-          if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) {
-            goldStar.blueCannonnLevel++;
-            levelUpGoldStar();
+          else if (pu.type === "blue-cannon") {
+            goldStar.blueKills++;
+            if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) {
+              goldStar.blueCannonnLevel++;
+              levelUpGoldStar();
+            }
+            createExplosion(pu.x, pu.y, "cyan");
+            score += 8;
           }
-          createExplosion(pu.x, pu.y, "cyan");
-          score += 8;
+          else if (pu.type === "health") {
+            goldStar.health = Math.min(goldStar.maxHealth, goldStar.health+30);
+            player.health = Math.min(player.maxHealth, player.health+30);
+            createExplosion(pu.x, pu.y, "magenta");
+            score += 5;
+          }
+          else if (pu.type === "reflect") {
+            goldStar.reflectAvailable = true;
+            player.reflectAvailable = true;
+            createExplosion(pu.x, pu.y, "magenta");
+            score += 12;
+          }
         }
-        else if (pu.type === "health") {
-          goldStar.health = Math.min(goldStar.maxHealth, goldStar.health+30);
-          player.health = Math.min(player.maxHealth, player.health+30);
-          createExplosion(pu.x, pu.y, "magenta");
-          score += 5;
-        }
-        else if (pu.type === "reflect") {
-          goldStar.reflectAvailable = true;
-          player.reflectAvailable = true;
-          createExplosion(pu.x, pu.y, "magenta");
-          score += 12;
-        }
-        powerUps = powerUps.filter(p => p !== pu);
+
+        // remove all picked powerUps from the world
+        powerUps = powerUps.filter(p => !picked.includes(p));
       }
       goldStar.collecting = false; goldStar.collectTimer = 0; goldStar.targetPowerUp = null;
     }
@@ -946,7 +955,7 @@ function drawEnemies() {
   enemies.forEach(e => {
     if (!e) return;
     if (e.type === "red-square") { ctx.fillStyle = "red"; ctx.fillRect(e.x-e.size/2, e.y-e.size/2, e.size, e.size); }
-    else if (e.type === "triangle") { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.moveTo(e.x, e.y-e.size/2); ctx.lineTo(e.x-e.size/2, e.y+e.size/2); ctx.lineTo(e.x+e.size/2, e.y+e.size/2); ctx.closePath(); ctx.fill(); }
+    else if (e.type === "triangle") { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.moveTo(e.x, e.y-e.size/2); ctx.lineTo(e.x-e.size/2, e.y+e.size/2); ctx.lineTo(e.x+e.size/2, e.y+e.size/2); ctx.closeP[...]
     else if (e.type === "boss") { ctx.fillStyle = "yellow"; ctx.beginPath(); ctx.arc(e.x, e.y, e.size/2, 0, Math.PI*2); ctx.fill(); }
     else if (e.type === "mini-boss") { ctx.fillStyle = "orange"; ctx.beginPath(); ctx.arc(e.x, e.y, e.size/2, 0, Math.PI*2); ctx.fill(); }
     else if (e.type === "reflector") {
@@ -1024,7 +1033,7 @@ function drawPowerUps() {
 function drawGoldStar() {
   if (!goldStar.alive) return;
   if (goldStar.collecting) {
-    const progress = 1 - (goldStar.collectTimer / 60);
+    const progress = 1 - (goldStar.collectTimer / GOLD_STAR_PICKUP_FRAMES);
     const maxRadius = goldStar.size/2 + 18;
     const currentRadius = goldStar.size/2 + 10 + (progress * 8);
     ctx.strokeStyle = `rgba(255, 255, 0, ${progress})`;
@@ -1234,6 +1243,32 @@ function drawUI() {
   ctx.fillStyle = "rgba(180,200,255,0.75)";
   ctx.font = "10px 'Orbitron', monospace";
   ctx.fillText(`R: ${Math.floor(goldStarAura.radius)}`, alX + barW - 38, alY - 12);
+
+  // Show small icons for Gold Star power-up levels (red square = red-punch, cyan triangle = blue-cannon)
+  let iconX = alX + barW + 8;
+  const iconY = alY - 8;
+  ctx.font = "10px 'Orbitron', monospace";
+  if (goldStar.redPunchLevel > 0) {
+    // small red square
+    ctx.fillStyle = "red";
+    ctx.fillRect(iconX, iconY, 12, 12);
+    ctx.fillStyle = "rgba(220,230,255,0.95)";
+    ctx.fillText(goldStar.redPunchLevel.toString(), iconX + 16, iconY + 1);
+    iconX += 34;
+  }
+  if (goldStar.blueCannonnLevel > 0) {
+    // small cyan triangle
+    ctx.fillStyle = "cyan";
+    ctx.beginPath();
+    ctx.moveTo(iconX + 6, iconY);
+    ctx.lineTo(iconX, iconY + 12);
+    ctx.lineTo(iconX + 12, iconY + 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(220,230,255,0.95)";
+    ctx.fillText(goldStar.blueCannonnLevel.toString(), iconX + 16, iconY + 1);
+    iconX += 34;
+  }
 
   // Wave transition compact banner (top center)
   if (waveTransition) {
