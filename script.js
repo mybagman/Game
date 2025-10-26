@@ -1,4 +1,3 @@
-
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
@@ -140,7 +139,8 @@ function performRedPunch() {
   nearby.forEach(o => {
     if (!o.e) return;
     o.e.health -= damage;
-    createExplosion(o.e.x, o.e.y, "orange");
+    // small impact explosion on each enemy
+    createExplosion(o.e.x, o.e.y, goldStar.redPunchLevel >= 3 ? "magenta" : "orange");
 
     if (knockbackForce > 0 && o.d > 0) {
       const dx = o.e.x - goldStar.x;
@@ -172,18 +172,54 @@ function performRedPunch() {
     }
   });
 
-  redPunchEffects.push({
-    x: goldStar.x,
-    y: goldStar.y,
-    maxR: radius,
-    r: 0,
-    life: 30,
-    maxLife: 30,
-    color: "rgba(255,100,0,0.25)"
-  });
+  // Visual effects: brighter for levels 1-2, distinct magenta/white for level 3+
+  if (goldStar.redPunchLevel <= 1) {
+    redPunchEffects.push({
+      x: goldStar.x,
+      y: goldStar.y,
+      maxR: radius,
+      r: 0,
+      life: 18,
+      maxLife: 18,
+      color: "rgba(255,220,120,0.9)",
+      fill: true
+    });
+    // a compact bright burst
+    for (let i = 0; i < 8; i++) explosions.push({x: goldStar.x, y: goldStar.y, dx:(Math.random()-0.5)*8, dy:(Math.random()-0.5)*8, radius:Math.random()*6+2, color:"rgba(255,200,100,0.9)", life:12});
+  } else if (goldStar.redPunchLevel === 2) {
+    redPunchEffects.push({
+      x: goldStar.x,
+      y: goldStar.y,
+      maxR: radius + 30,
+      r: 0,
+      life: 24,
+      maxLife: 24,
+      color: "rgba(255,160,60,0.95)",
+      fill: true
+    });
+    for (let i = 0; i < 14; i++) explosions.push({x: goldStar.x, y: goldStar.y, dx:(Math.random()-0.5)*10, dy:(Math.random()-0.5)*10, radius:Math.random()*8+3, color:"rgba(255,140,50,0.95)", life:16});
+  } else {
+    // Level 3+ distinct visual: magenta/white large blast (so it doesn't look like red-square death)
+    redPunchEffects.push({
+      x: goldStar.x,
+      y: goldStar.y,
+      maxR: radius + 60,
+      r: 0,
+      life: 36,
+      maxLife: 36,
+      color: "rgba(255,60,255,0.95)",
+      fill: false,
+      ring: true
+    });
+    // intense central white flash
+    explosions.push({x: goldStar.x, y: goldStar.y, dx:0, dy:0, radius: 40, color:"rgba(255,255,255,0.95)", life:8});
+    // magenta shards
+    for (let i = 0; i < 20; i++) explosions.push({x: goldStar.x, y: goldStar.y, dx:(Math.random()-0.5)*12, dy:(Math.random()-0.5)*12, radius:Math.random()*6+2, color:"rgba(255,50,200,0.9)", life:22});
+  }
 
   if (goldStar.redPunchLevel >= 3) {
-    createExplosion(goldStar.x, goldStar.y, "red");
+    // replace the older red explosion with magenta+white flash to avoid confusion with red-square death
+    createExplosion(goldStar.x, goldStar.y, "magenta");
   }
 }
 
@@ -481,7 +517,18 @@ function updateEnemies() {
       const distToPlayer = Math.hypot(e.x-player.x, e.y-player.y);
       if (distToPlayer < (e.size/2 + player.size/2)) { if (!player.invulnerable) player.health -= (e.type === "triangle" ? 25 : 15); createExplosion(e.x, e.y, "red"); e.health -= 100; }
       const distToGoldStar = Math.hypot(e.x-goldStar.x, e.y-goldStar.y);
-      if (goldStar.alive && distToGoldStar < (e.size/2 + goldStar.size/2)) { goldStar.health -= (e.type === "triangle" ? 20 : 12); createExplosion(e.x, e.y, "orange"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); } }
+      if (goldStar.alive && distToGoldStar < (e.size/2 + goldStar.size/2)) {
+        goldStar.health -= (e.type === "triangle" ? 20 : 12);
+        createExplosion(e.x, e.y, "orange");
+        if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); }
+      }
+      // If enemy died due to collision damage applied above, handle drops & score
+      if (e.health <= 0) {
+        if (!e.fromBoss) {
+          if (e.type === "triangle") { score += 10; spawnPowerUp(e.x, e.y, "blue-cannon"); }
+          else if (e.type === "red-square") { score += 10; spawnPowerUp(e.x, e.y, "red-punch"); }
+        }
+      }
       return e.health > 0;
     }
 
@@ -521,7 +568,10 @@ function updateEnemies() {
       const distToPlayer = Math.hypot(e.x-player.x, e.y-player.y);
       if (distToPlayer < 30) { if (!player.invulnerable) player.health -= 15; createExplosion(e.x, e.y, "magenta"); e.health -= 50; }
       const distToGoldStar = Math.hypot(e.x-goldStar.x, e.y-goldStar.y);
-      if (goldStar.alive && distToGoldStar < 30) { goldStar.health -= 15; createExplosion(e.x, e.y, "magenta"); if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); } }
+      if (goldStar.alive && distToGoldStar < 30) {
+        goldStar.health -= 15; createExplosion(e.x, e.y, "magenta");
+        if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); }
+      }
 
       if (e.health <= 0) {
         createExplosion(e.x, e.y, "purple");
@@ -633,7 +683,18 @@ function checkBulletCollisions() {
 }
 
 function handlePowerUpCollections() {
-  return;
+  // player collecting powerups
+  for (let i = powerUps.length - 1; i >= 0; i--) {
+    const p = powerUps[i];
+    const dist = Math.hypot(p.x - player.x, p.y - player.y);
+    if (dist < (p.size/2 + player.size/2)) {
+      if (p.type === "health") { player.health = Math.min(player.maxHealth, player.health + 30); createExplosion(p.x, p.y, "magenta"); }
+      else if (p.type === "red-punch") { goldStar.redKills++; if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) goldStar.redPunchLevel++; createExplosion(p.x, p.y, "orange"); }
+      else if (p.type === "blue-cannon") { goldStar.blueKills++; if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) goldStar.blueCannonnLevel++; createExplosion(p.x, p.y, "cyan"); }
+      else if (p.type === "reflect") { player.reflectAvailable = true; goldStar.reflectAvailable = true; createExplosion(p.x, p.y, "magenta"); }
+      powerUps.splice(i,1);
+    }
+  }
 }
 
 function drawPlayer() {
@@ -681,9 +742,16 @@ function drawDiamonds() {
     ctx.beginPath(); ctx.moveTo(0, -d.size/2 - d.pulse); ctx.lineTo(d.size/2 + d.pulse, 0); ctx.lineTo(0, d.size/2 + d.pulse); ctx.lineTo(-d.size/2 - d.pulse, 0); ctx.closePath(); ctx.stroke();
     ctx.restore();
     d.attachments.forEach(a => {
-      if (a.type === "triangle") { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.moveTo(a.x, a.y-(a.size||20)/2); ctx.lineTo(a.x-(a.size||20)/2, a.y+(a.size||20)/2); ctx.lineTo(a.x+(a.size||20)/2, a.y+(a.size||20)/2); ctx.closePath(); ctx.fill(); }
-      else if (a.type === "reflector") { ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.orbitAngle||0); ctx.fillStyle = "magenta"; ctx.fillRect(-(a.width||20)/2, -(a.height||10)/2, a.width||20, a.height||10); ctx.restore(); }
-      else { ctx.fillStyle = "lime"; ctx.fillRect(a.x-(a.size||20)/2, a.y-(a.size||20)/2, a.size||20, a.size||20); }
+      if (a.type === "triangle") {
+        ctx.fillStyle = "cyan";
+        ctx.beginPath(); ctx.moveTo(a.x, a.y-(a.size||20)/2); ctx.lineTo(a.x-(a.size||20)/2, a.y+(a.size||20)/2); ctx.lineTo(a.x+(a.size||20)/2, a.y+(a.size||20)/2); ctx.closePath(); ctx.fill();
+      }
+      else if (a.type === "reflector") {
+        ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.orbitAngle||0); ctx.fillStyle = "magenta"; ctx.fillRect(-(a.width||20)/2, -(a.height||10)/2, a.width||20, a.height||10); ctx.restore();
+      }
+      else {
+        ctx.fillStyle = "lime"; ctx.fillRect(a.x-(a.size||20)/2, a.y-(a.size||20)/2, a.size||20, a.size||20);
+      }
     });
   });
 }
@@ -754,13 +822,28 @@ function drawGoldStar() {
 }
 
 function drawRedPunchEffects() {
+  // Use additive blending to make the red-punch brighter
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
   redPunchEffects.forEach(e => {
-    ctx.beginPath();
-    ctx.strokeStyle = e.color;
-    ctx.lineWidth = 4 * (e.life / e.maxLife);
-    ctx.arc(e.x, e.y, e.r, 0, Math.PI*2);
-    ctx.stroke();
+    const lifeFactor = Math.max(0, e.life / e.maxLife);
+    if (e.fill) {
+      ctx.beginPath();
+      ctx.fillStyle = e.color;
+      ctx.globalAlpha = lifeFactor * 0.9;
+      ctx.arc(e.x, e.y, Math.max(2, e.r), 0, Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else {
+      // ring style
+      ctx.beginPath();
+      ctx.strokeStyle = e.color;
+      ctx.lineWidth = 6 * lifeFactor;
+      ctx.arc(e.x, e.y, Math.max(2, e.r), 0, Math.PI*2);
+      ctx.stroke();
+    }
   });
+  ctx.restore();
 }
 
 function drawUI() {
@@ -873,6 +956,3 @@ function gameLoop() {
 
 window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
 wave = 0; waveTransition = false; waveTransitionTimer = 0; spawnWave(wave); gameLoop();
-  </script>
-</body>
-</html>
