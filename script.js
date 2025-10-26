@@ -12,11 +12,11 @@ let frameCount = 0;
 
 // ======== GOLD STAR AURA SYSTEM ========
 const goldStarAura = {
-  baseRadius: 100,
-  radius: 100,
+  baseRadius: 50,
+  radius: 50,
   pulse: 0,
   level: 0,
-  active: true
+  active: false
 };
 
 let auraSparks = [];
@@ -35,7 +35,17 @@ function getAuraSparkColor() {
 }
 
 function updateAuraStats() {
-  goldStarAura.radius = goldStarAura.baseRadius + goldStarAura.level * 60;
+  goldStarAura.radius = goldStarAura.baseRadius + goldStarAura.level * 30;
+  
+  // Check if player is within aura radius to activate it
+  if (goldStar.alive) {
+    const dx = player.x - goldStar.x;
+    const dy = player.y - goldStar.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    goldStarAura.active = dist < goldStarAura.radius;
+  } else {
+    goldStarAura.active = false;
+  }
 }
 
 function triggerAuraShockwave() {
