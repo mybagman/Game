@@ -1,6 +1,3 @@
-// (Full file: updated UI styles — rest of logic preserved)
-// NOTE: This is the full script.js with an updated, compact, futuristic UI.
-
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
@@ -205,7 +202,9 @@ function applyGoldStarAuraEffects() {
     const bx = l.x - goldStar.x;
     const by = l.y - goldStar.y;
     const bd = Math.sqrt(bx*bx + by*by);
-    if (bd < goldStarAura.radius) {
+    // Extend bullet slow effect radius by 25% while keeping the visible aura size unchanged
+    const bulletSlowRadius = goldStarAura.radius * 1.25;
+    if (bd < bulletSlowRadius) {
       // Compute a single, non-cumulative slow factor (clamped so bullets always move).
       // Keep the factor tied to aura level; at level 0 there's no slow (1.0), higher levels reduce speed.
       const slowFactor = Math.max(0.2, 1 - 0.1 * goldStarAura.level);
