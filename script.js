@@ -1,8 +1,33 @@
 // contents of file
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+// NOTE: initialization deferred until window load to ensure the DOM (gameCanvas) exists.
+
+let canvas, ctx;
+function ensureCanvas() {
+  canvas = document.getElementById("gameCanvas");
+  if (!canvas) {
+    console.error("Canvas element with id 'gameCanvas' not found.");
+    return false;
+  }
+  ctx = canvas.getContext("2d");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  return true;
+}
+
+window.addEventListener('load', init);
+
+function init() {
+  if (!ensureCanvas()) return;
+
+  window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  });
+
+  // start cinematic at load so the intro runs before waves start
+  wave = 0; waveTransition = false; waveTransitionTimer = 0;
+  startCutscene();
+}
 
 // ==============================
 // Cinematic cutscene system (with sprite launch)
@@ -502,13 +527,13 @@ function drawGoldStarAura(ctx) {
 // ======== END GOLD STAR AURA SYSTEM ========
 
 let player = {
-  x: canvas.width/2, y: canvas.height/2, size: 30, speed: 5,
+  x: (canvas ? canvas.width/2 : 800/2), y: (canvas ? canvas.height/2 : 600/2), size: 30, speed: 5,
   health: 100, maxHealth: 100, lives: 3, invulnerable: false, invulnerableTimer: 0,
   reflectAvailable: false, fireRateBoost: 1
 };
 
 let goldStar = {
-  x: canvas.width/4, y: canvas.height/2, size: 35, speed: 3,
+  x: (canvas ? canvas.width/4 : 800/4), y: (canvas ? canvas.height/2 : 600/2), size: 35, speed: 3,
   health: 150, maxHealth: 150, alive: true, redPunchLevel: 0, blueCannonnLevel: 0,
   redKills: 0, blueKills: 0, punchCooldown: 0, cannonCooldown: 0,
   collecting: false, collectTimer: 0, targetPowerUp: null, respawnTimer: 0,
@@ -1689,9 +1714,3 @@ function gameLoop() {
     }
   } else requestAnimationFrame(gameLoop);
 }
-
-window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
-
-// start cinematic at load so the intro runs before waves start
-wave = 0; waveTransition = false; waveTransitionTimer = 0;
-startCutscene();
