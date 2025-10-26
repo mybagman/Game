@@ -6,7 +6,11 @@ wasd keys = movement.
 arrow keys = 8 directional shooting.
 
 The aim:
-destroy the enemy waves. by defeating the enemy types.
+destroy the enemy waves. by defeating the different enemy types.
+
+gold star support ship:
+powers up by collecting enemy wreckage
+boosts players health and rate of fire when together.
 
 the enemies:
 red square = kamakazi attacker.
