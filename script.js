@@ -11,6 +11,8 @@ let redPunchEffects = [];
 let score = 0, wave = 0, minionsToAdd = [];
 let shootCooldown = 0, waveTransition = false, waveTransitionTimer = 0;
 const WAVE_BREAK_MS = 2500;
+const GOLD_STAR_PICKUP_FRAMES = 30;
+const PICKUP_RADIUS = 60;
 let frameCount = 0;
 
 // ======== GOLD STAR AURA SYSTEM ========
@@ -461,42 +463,51 @@ function updateGoldStar() {
 
   if (goldStar.collecting) {
     goldStar.collectTimer++;
-    if (goldStar.collectTimer >= 60) {
+    if (goldStar.collectTimer >= GOLD_STAR_PICKUP_FRAMES) {
       if (goldStar.targetPowerUp) {
-        const pu = goldStar.targetPowerUp;
-        if (pu.type === "red-punch") {
-          const oldLevel = goldStar.redPunchLevel;
-          goldStar.redKills++;
-          if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) {
-            goldStar.redPunchLevel++;
-            levelUpGoldStar();
+        const targetPU = goldStar.targetPowerUp;
+        // Find all powerUps within PICKUP_RADIUS of the target powerUp
+        const powerUpsToCollect = powerUps.filter(pu => {
+          const dist = Math.hypot(pu.x - targetPU.x, pu.y - targetPU.y);
+          return dist <= PICKUP_RADIUS;
+        });
+        
+        // Apply effects for each collected powerUp
+        powerUpsToCollect.forEach(pu => {
+          if (pu.type === "red-punch") {
+            goldStar.redKills++;
+            if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) {
+              goldStar.redPunchLevel++;
+              levelUpGoldStar();
+            }
+            createExplosion(pu.x, pu.y, "orange");
+            score += 8;
           }
-          createExplosion(pu.x, pu.y, "orange");
-          score += 8;
-        }
-        else if (pu.type === "blue-cannon") {
-          const oldLevel = goldStar.blueCannonnLevel;
-          goldStar.blueKills++;
-          if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) {
-            goldStar.blueCannonnLevel++;
-            levelUpGoldStar();
+          else if (pu.type === "blue-cannon") {
+            goldStar.blueKills++;
+            if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) {
+              goldStar.blueCannonnLevel++;
+              levelUpGoldStar();
+            }
+            createExplosion(pu.x, pu.y, "cyan");
+            score += 8;
           }
-          createExplosion(pu.x, pu.y, "cyan");
-          score += 8;
-        }
-        else if (pu.type === "health") {
-          goldStar.health = Math.min(goldStar.maxHealth, goldStar.health+30);
-          player.health = Math.min(player.maxHealth, player.health+30);
-          createExplosion(pu.x, pu.y, "magenta");
-          score += 5;
-        }
-        else if (pu.type === "reflect") {
-          goldStar.reflectAvailable = true;
-          player.reflectAvailable = true;
-          createExplosion(pu.x, pu.y, "magenta");
-          score += 12;
-        }
-        powerUps = powerUps.filter(p => p !== pu);
+          else if (pu.type === "health") {
+            goldStar.health = Math.min(goldStar.maxHealth, goldStar.health+30);
+            player.health = Math.min(player.maxHealth, player.health+30);
+            createExplosion(pu.x, pu.y, "magenta");
+            score += 5;
+          }
+          else if (pu.type === "reflect") {
+            goldStar.reflectAvailable = true;
+            player.reflectAvailable = true;
+            createExplosion(pu.x, pu.y, "magenta");
+            score += 12;
+          }
+        });
+        
+        // Remove all collected powerUps from the array
+        powerUps = powerUps.filter(pu => !powerUpsToCollect.includes(pu));
       }
       goldStar.collecting = false; goldStar.collectTimer = 0; goldStar.targetPowerUp = null;
     }
@@ -1024,7 +1035,7 @@ function drawPowerUps() {
 function drawGoldStar() {
   if (!goldStar.alive) return;
   if (goldStar.collecting) {
-    const progress = 1 - (goldStar.collectTimer / 60);
+    const progress = 1 - (goldStar.collectTimer / GOLD_STAR_PICKUP_FRAMES);
     const maxRadius = goldStar.size/2 + 18;
     const currentRadius = goldStar.size/2 + 10 + (progress * 8);
     ctx.strokeStyle = `rgba(255, 255, 0, ${progress})`;
@@ -1234,6 +1245,45 @@ function drawUI() {
   ctx.fillStyle = "rgba(180,200,255,0.75)";
   ctx.font = "10px 'Orbitron', monospace";
   ctx.fillText(`R: ${Math.floor(goldStarAura.radius)}`, alX + barW - 38, alY - 12);
+
+  // Power-up icons display (red-punch and blue-cannon)
+  const iconStartX = gsX + 10;
+  const iconY = gsY + 42;
+  let iconOffsetX = 0;
+
+  // Red-punch icon (square)
+  if (goldStar.redPunchLevel > 0) {
+    ctx.fillStyle = "rgba(255,60,60,0.9)";
+    ctx.fillRect(iconStartX + iconOffsetX, iconY, 12, 12);
+    ctx.strokeStyle = "rgba(255,100,100,0.6)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(iconStartX + iconOffsetX, iconY, 12, 12);
+    
+    // Level text next to icon
+    ctx.fillStyle = "rgba(255,220,220,0.95)";
+    ctx.font = "10px 'Orbitron', monospace";
+    ctx.fillText(`${goldStar.redPunchLevel}`, iconStartX + iconOffsetX + 16, iconY + 9);
+    iconOffsetX += 35;
+  }
+
+  // Blue-cannon icon (triangle)
+  if (goldStar.blueCannonnLevel > 0) {
+    ctx.fillStyle = "rgba(0,220,255,0.9)";
+    ctx.beginPath();
+    ctx.moveTo(iconStartX + iconOffsetX + 6, iconY);
+    ctx.lineTo(iconStartX + iconOffsetX, iconY + 12);
+    ctx.lineTo(iconStartX + iconOffsetX + 12, iconY + 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(100,230,255,0.6)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    // Level text next to icon
+    ctx.fillStyle = "rgba(200,240,255,0.95)";
+    ctx.font = "10px 'Orbitron', monospace";
+    ctx.fillText(`${goldStar.blueCannonnLevel}`, iconStartX + iconOffsetX + 16, iconY + 9);
+  }
 
   // Wave transition compact banner (top center)
   if (waveTransition) {
