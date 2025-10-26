@@ -9,7 +9,7 @@ The aim:
 destroy the enemy waves by defeating the different enemy types.
 
 gold star support ship:
-powers up by collecting enemy wreckage
+powers up by collecting enemy wreckage and
 boosts players health and rate of fire when together.
 
 the enemies:
