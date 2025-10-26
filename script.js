@@ -35,7 +35,8 @@ function getAuraSparkColor() {
 }
 
 function updateAuraStats() {
-  goldStarAura.radius = goldStarAura.baseRadius + goldStarAura.level * 30;
+  // Aura radius increases only by 2% per level relative to baseRadius
+  goldStarAura.radius = goldStarAura.baseRadius * (1 + 0.02 * goldStarAura.level);
   
   // Check if player is within aura radius to activate it
   if (goldStar.alive) {
@@ -128,8 +129,27 @@ function drawAura(ctx) {
 }
 
 function applyGoldStarAuraEffects() {
-  if (!goldStar.alive || !goldStarAura.active) return;
+  // Player buffs are only active when player is within the aura radius.
+  // Enemy bullets are slowed non-cumulatively while inside the aura.
+  // Bullets must always move (we clamp slow factor).
+  // Restore bullets to original velocities when they leave aura or aura deactivates.
 
+  // Default player buff state
+  player.fireRateBoost = 1;
+
+  // If gold star is dead or aura not active, restore any slowed lightning and skip applying buffs
+  if (!goldStar.alive || !goldStarAura.active) {
+    for (const l of lightning) {
+      if (l._origDx !== undefined && l._origDy !== undefined && l._inAura) {
+        l.dx = l._origDx;
+        l.dy = l._origDy;
+        l._inAura = false;
+      }
+    }
+    return;
+  }
+
+  // Gold star is alive and aura is active; check if player is actually within the aura radius
   const dx = player.x - goldStar.x;
   const dy = player.y - goldStar.y;
   const dist = Math.sqrt(dx*dx + dy*dy);
@@ -145,17 +165,34 @@ function applyGoldStarAuraEffects() {
     player.fireRateBoost = 1;
   }
 
-  // Slow enemy bullets in aura
-  lightning.forEach(l => {
+  // Slow enemy bullets that are inside the aura.
+  for (const l of lightning) {
+    // Record original velocity once so we can restore later and avoid cumulative slowing.
+    if (l._origDx === undefined || l._origDy === undefined) {
+      l._origDx = l.dx;
+      l._origDy = l.dy;
+      l._inAura = false;
+    }
+
     const bx = l.x - goldStar.x;
     const by = l.y - goldStar.y;
     const bd = Math.sqrt(bx*bx + by*by);
     if (bd < goldStarAura.radius) {
-      const slowFactor = 1 - 0.1 * (goldStarAura.level + 1);
-      l.dx *= Math.max(0.8, slowFactor);
-      l.dy *= Math.max(0.8, slowFactor);
+      // Non-cumulative slow factor. At level 0 no slow; increases per level.
+      // Clamp so bullets always move.
+      const slowFactor = Math.max(0.2, 1 - 0.1 * goldStarAura.level);
+      l.dx = l._origDx * slowFactor;
+      l.dy = l._origDy * slowFactor;
+      l._inAura = true;
+    } else {
+      // Restore original velocity if it was slowed previously
+      if (l._inAura) {
+        l.dx = l._origDx;
+        l.dy = l._origDy;
+        l._inAura = false;
+      }
     }
-  });
+  }
 }
 
 function levelUpGoldStar() {
@@ -1086,6 +1123,10 @@ function spawnWave(waveIndex) {
 
 function tryAdvanceWave() {
   if (enemies.length === 0 && diamonds.length === 0 && tunnels.length === 0 && !waveTransition) {
+    // Remove all bullets (player and enemy) when a wave ends so the next wave starts without stale bullets.
+    bullets = [];
+    lightning = [];
+
     if (wave >= waves.length-1) { waveTransition = true; waveTransitionTimer = 0; return; }
     waveTransition = true;
     waveTransitionTimer = 0;
