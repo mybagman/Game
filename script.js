@@ -1,9 +1,8 @@
-// Fixed script.js
-// - Removed duplicate canvas/ctx declarations and early DOM access
-// - Ensure initialization happens on window.load
-// - Start the game immediately (skips auto cinematic) so the game "runs only"
-// - Fixed duplicate player/goldStar property definitions and ensured positions are set after canvas is available
-// You can still call startCutscene() manually if you want the intro.
+// Fixed script.js + intro auto-start + persistent high score
+// - Intro (cinematic) now auto-plays on load.
+// - High score is stored in localStorage and displayed in the HUD; it persists between games.
+// - Game over saves high score and supports restarting with "R" (restarts cinematic).
+// - Kept all other game logic, only integrated persistence and restart flow.
 
 let canvas, ctx;
 
@@ -36,14 +35,17 @@ function init() {
   goldStar.x = canvas.width / 4;
   goldStar.y = canvas.height / 2;
 
-  // start the game immediately (no automatic cutscene)
+  // load persistent high score
+  loadHighScore();
+
+  // start with cinematic intro
   wave = 0; waveTransition = false; waveTransitionTimer = 0;
-  spawnWave(wave);
-  gameLoop();
+  // spawnWave and gameLoop will be started after cutscene in endCutscene()
+  startCutscene();
 }
 
 // ==============================
-// Enhanced Cinematic cutscene system (kept but not auto-started)
+// Enhanced Cinematic cutscene system (auto-started)
 // ==============================
 
 let cinematic = {
@@ -343,7 +345,7 @@ let cinematicStartTime = 0;
 
 function startCutscene() {
   // optional: request a name if you want the cinematic personalization
-  const name = prompt ? (prompt("Enter your pilot name:", "Pilot") || "Pilot") : "Pilot";
+  const name = typeof prompt === 'function' ? (prompt("Enter your pilot name:", "Pilot") || "Pilot") : "Pilot";
   cinematic.playerName = name;
   cinematic.playing = true;
   cinematicScenes = makeCutsceneScenes();
@@ -387,12 +389,64 @@ window.addEventListener("keydown", e => {
   }
 });
 
+// ======= Persistence and restart =======
+let gameOver = false;
+let highScore = 0;
+const HIGH_SCORE_KEY = 'mybagman_game_highscore';
+
+function loadHighScore() {
+  try {
+    const v = localStorage.getItem(HIGH_SCORE_KEY);
+    highScore = v ? parseInt(v, 10) || 0 : 0;
+  } catch (e) {
+    highScore = 0;
+  }
+}
+
+function saveHighScoreIfNeeded() {
+  try {
+    if (score > highScore) {
+      highScore = score;
+      localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
+    }
+  } catch (e) {
+    // ignore storage errors
+  }
+}
+
+window.addEventListener('keydown', (e) => {
+  // Restart when game over
+  if (e.key.toLowerCase() === 'r' && gameOver) {
+    resetGame();
+  }
+});
+
+// Reset the game to initial state and re-run the intro
+function resetGame() {
+  // clear world
+  bullets = []; lightning = []; enemies = []; diamonds = []; powerUps = []; explosions = []; tunnels = []; minionsToAdd = [];
+  // reset state
+  score = 0;
+  wave = 0;
+  waveTransition = false;
+  waveTransitionTimer = 0;
+  player.lives = 3;
+  respawnPlayer();
+  respawnGoldStar();
+  loadHighScore();
+  gameOver = false;
+  // start cinematic again
+  startCutscene();
+}
+
+// Called after cinematic finishes or is skipped
 function endCutscene() {
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   wave = 0;
   waveTransition = false;
   spawnWave(wave);
+  // ensure any previous animation loops are not left hanging and then start game loop
   gameLoop();
 }
 
@@ -1618,7 +1672,8 @@ function drawUI() {
   ctx.fillStyle = "rgba(200,220,255,0.95)";
   ctx.font = "12px 'Orbitron', monospace";
   ctx.fillText(`SCORE: ${score}`, hbX, hbY + hbH + 10);
-  ctx.fillText(`WAVE: ${wave+1}`, hbX + 110, hbY + hbH + 10);
+  ctx.fillText(`BEST: ${highScore}`, hbX + 100, hbY + hbH + 10);
+  ctx.fillText(`WAVE: ${wave+1}`, hbX + 180, hbY + hbH + 10);
 
   // Lives as small neon dots
   const livesX = x + hudW - 12 - 18;
@@ -1813,6 +1868,9 @@ function tryAdvanceWave() {
 }
 
 function gameLoop() {
+  // If game over, do not continue main loop
+  if (gameOver) return;
+
   frameCount++;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -1846,8 +1904,20 @@ function gameLoop() {
     player.lives--;
     if (player.lives > 0) { respawnPlayer(); requestAnimationFrame(gameLoop); }
     else {
-      ctx.fillStyle = "white"; ctx.font = "50px Arial"; ctx.fillText("GAME OVER", canvas.width/2-150, canvas.height/2);
-      ctx.font = "30px Arial"; ctx.fillText(`Final Score: ${score}`, canvas.width/2-120, canvas.height/2+50);
+      // Game over
+      gameOver = true;
+      saveHighScoreIfNeeded();
+      // Final frame draw of Game Over + instruction to restart
+      ctx.fillStyle = "white"; ctx.font = "50px Arial"; ctx.textAlign = "center";
+      ctx.fillText("GAME OVER", canvas.width/2, canvas.height/2);
+      ctx.font = "30px Arial";
+      ctx.fillText(`Final Score: ${score}`, canvas.width/2, canvas.height/2+50);
+      ctx.font = "20px Arial";
+      ctx.fillText(`Best: ${highScore}`, canvas.width/2, canvas.height/2+90);
+      ctx.fillText(`Press R to restart`, canvas.width/2, canvas.height/2+130);
+      // stop loop by not requesting another frame
     }
-  } else requestAnimationFrame(gameLoop);
+  } else {
+    requestAnimationFrame(gameLoop);
+  }
 }
