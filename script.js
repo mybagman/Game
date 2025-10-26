@@ -428,7 +428,18 @@ function performRedPunch() {
       color: "rgba(255,160,60,0.95)",
       fill: true
     });
-    for (let i = 0; i < 14; i++) explosions.push({x: goldStar.x, y: goldStar.y, dx:(Math.random()-0.5)*10, dy:(Math.random()-0.5)*10, radius:Math.random()*8+3, color:"rgba(255,140,50,0.95)", life:16})[...]
+    // fixed: create a set of medium explosions for level 2
+    for (let i = 0; i < 14; i++) {
+      explosions.push({
+        x: goldStar.x,
+        y: goldStar.y,
+        dx: (Math.random() - 0.5) * 10,
+        dy: (Math.random() - 0.5) * 10,
+        radius: Math.random() * 8 + 3,
+        color: "rgba(255,140,50,0.95)",
+        life: 16
+      });
+    }
   } else {
     redPunchEffects.push({
       x: goldStar.x,
@@ -955,7 +966,7 @@ function drawEnemies() {
   enemies.forEach(e => {
     if (!e) return;
     if (e.type === "red-square") { ctx.fillStyle = "red"; ctx.fillRect(e.x-e.size/2, e.y-e.size/2, e.size, e.size); }
-    else if (e.type === "triangle") { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.moveTo(e.x, e.y-e.size/2); ctx.lineTo(e.x-e.size/2, e.y+e.size/2); ctx.lineTo(e.x+e.size/2, e.y+e.size/2); ctx.closeP[...]
+    else if (e.type === "triangle") { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.moveTo(e.x, e.y-e.size/2); ctx.lineTo(e.x-e.size/2, e.y+e.size/2); ctx.lineTo(e.x+e.size/2, e.y+e.size/2); ctx.closePath(); ctx.fill(); }
     else if (e.type === "boss") { ctx.fillStyle = "yellow"; ctx.beginPath(); ctx.arc(e.x, e.y, e.size/2, 0, Math.PI*2); ctx.fill(); }
     else if (e.type === "mini-boss") { ctx.fillStyle = "orange"; ctx.beginPath(); ctx.arc(e.x, e.y, e.size/2, 0, Math.PI*2); ctx.fill(); }
     else if (e.type === "reflector") {
@@ -1299,29 +1310,6 @@ function drawUI() {
 }
 
 // ---------- End UI ----------
-
-function drawRedPunchEffects() {
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  redPunchEffects.forEach(e => {
-    const lifeFactor = Math.max(0, e.life / e.maxLife);
-    if (e.fill) {
-      ctx.beginPath();
-      ctx.fillStyle = e.color;
-      ctx.globalAlpha = lifeFactor * 0.9;
-      ctx.arc(e.x, e.y, Math.max(2, e.r), 0, Math.PI*2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    } else {
-      ctx.beginPath();
-      ctx.strokeStyle = e.color;
-      ctx.lineWidth = 6 * lifeFactor;
-      ctx.arc(e.x, e.y, Math.max(2, e.r), 0, Math.PI*2);
-      ctx.stroke();
-    }
-  });
-  ctx.restore();
-}
 
 const waves = [
   { enemies: [{ type: "red-square", count: 2 }] },
