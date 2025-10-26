@@ -134,19 +134,36 @@ function performRedPunch() {
   // Damage scales with level
   const damage = 40 * goldStar.redPunchLevel;
 
+  // Knockback strength (only active from level 3+)
+  const knockbackForce = goldStar.redPunchLevel >= 3 ? 15 + (goldStar.redPunchLevel - 3) * 5 : 0;
+
   // Deal damage to enemies in radius (nearest first, up to punches)
   const nearby = enemies
-    .map(e => ({e, d: Math.hypot((e.x||0) - goldStar.x, (e.y||0) - goldStar.y)}))
+    .map(e => ({ e, d: Math.hypot((e.x || 0) - goldStar.x, (e.y || 0) - goldStar.y) }))
     .filter(o => o.d <= radius)
-    .sort((a,b) => a.d - b.d)
+    .sort((a, b) => a.d - b.d)
     .slice(0, punches);
 
   nearby.forEach(o => {
     if (!o.e) return;
+
+    // Damage
     o.e.health -= damage;
     createExplosion(o.e.x, o.e.y, "orange");
+
+    // Knockback effect (only at level 3+)
+    if (knockbackForce > 0 && o.d > 0) {
+      const dx = o.e.x - goldStar.x;
+      const dy = o.e.y - goldStar.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const pushX = (dx / dist) * knockbackForce;
+      const pushY = (dy / dist) * knockbackForce;
+      o.e.x += pushX;
+      o.e.y += pushY;
+    }
+
+    // Enemy death logic
     if (o.e.health <= 0) {
-      // award score and possibly spawn power-ups similar to normal kills
       const idx = enemies.indexOf(o.e);
       if (idx !== -1) {
         const e = enemies[idx];
@@ -158,17 +175,30 @@ function performRedPunch() {
         }
         // If the killed enemy is a reflector we also want to drop health AND reflect power-up
         if (e.type === "reflector" && !e.fromBoss) {
-          // spawn the health power-up where it died
           spawnPowerUp(e.x, e.y, "health");
-          spawnPowerUp(e.x, e.y, "reflect"); // give a reflector ability power-up
+          spawnPowerUp(e.x, e.y, "reflect");
           score += 20;
         }
-        enemies.splice(idx,1);
+        enemies.splice(idx, 1);
       }
     }
   });
+
   // Visual pulse
-  redPunchEffects.push({x: goldStar.x, y: goldStar.y, maxR: radius, r: 0, life: 30, maxLife: 30, color: "rgba(255,100,0,0.25)"});
+  redPunchEffects.push({
+    x: goldStar.x,
+    y: goldStar.y,
+    maxR: radius,
+    r: 0,
+    life: 30,
+    maxLife: 30,
+    color: "rgba(255,100,0,0.25)"
+  });
+
+  // Optional central explosion flash for feedback
+  if (goldStar.redPunchLevel >= 3) {
+    createExplosion(goldStar.x, goldStar.y, "red");
+  }
 }
 
 function updateGoldStar() {
