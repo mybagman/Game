@@ -8,11 +8,170 @@ let redPunchEffects = [];
 let score = 0, wave = 0, minionsToAdd = [];
 let shootCooldown = 0, waveTransition = false, waveTransitionTimer = 0;
 const WAVE_BREAK_MS = 2500;
+let frameCount = 0;
+
+// ======== GOLD STAR AURA SYSTEM ========
+const goldStarAura = {
+  baseRadius: 100,
+  radius: 100,
+  pulse: 0,
+  level: 0,
+  active: true
+};
+
+let auraSparks = [];
+let auraShockwaves = [];
+let auraPulseTimer = 0;
+
+function getAuraSparkColor() {
+  switch (goldStarAura.level) {
+    case 0: return "rgba(255,255,100,0.3)";
+    case 1: return "rgba(255,200,80,0.35)";
+    case 2: return "rgba(255,150,60,0.4)";
+    case 3: return "rgba(255,100,40,0.45)";
+    case 4: return "rgba(255,80,20,0.5)";
+    default: return "rgba(255,50,0,0.5)";
+  }
+}
+
+function updateAuraStats() {
+  goldStarAura.radius = goldStarAura.baseRadius + goldStarAura.level * 60;
+}
+
+function triggerAuraShockwave() {
+  auraShockwaves.push({
+    x: goldStar.x,
+    y: goldStar.y,
+    r: goldStarAura.radius * 0.5,
+    maxR: goldStarAura.radius * 2,
+    life: 30,
+    maxLife: 30,
+    color: getAuraSparkColor()
+  });
+}
+
+function updateAuraShockwaves() {
+  auraShockwaves.forEach(s => {
+    s.r += (s.maxR - s.r) * 0.25;
+    s.life--;
+    // Push bullets slightly
+    lightning.forEach(l => {
+      const dx = l.x - s.x;
+      const dy = l.y - s.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < s.r && dist > 0) {
+        const push = (1 - dist / s.r) * 2;
+        l.dx += (dx / dist) * push * 0.1;
+        l.dy += (dy / dist) * push * 0.1;
+      }
+    });
+  });
+  auraShockwaves = auraShockwaves.filter(s => s.life > 0);
+}
+
+function drawAuraShockwaves(ctx) {
+  auraShockwaves.forEach(s => {
+    const alpha = s.life / s.maxLife;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.strokeStyle = s.color.replace(/[\d.]+\)$/g, (0.4 * alpha) + ")");
+    ctx.lineWidth = 6 - 4 * (1 - alpha);
+    ctx.stroke();
+  });
+}
+
+function updateAuraSparks() {
+  if (!goldStar.alive) return;
+  auraPulseTimer++;
+  if (auraPulseTimer % 6 === 0) {
+    auraSparks.push({
+      x: goldStar.x + (Math.random() - 0.5) * goldStarAura.radius * 2,
+      y: goldStar.y + (Math.random() - 0.5) * goldStarAura.radius * 2,
+      life: 30,
+      color: getAuraSparkColor()
+    });
+  }
+  auraSparks.forEach(s => s.life--);
+  auraSparks = auraSparks.filter(s => s.life > 0);
+}
+
+function drawAuraSparks(ctx) {
+  auraSparks.forEach(s => {
+    const alpha = s.life / 30;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 2, 0, Math.PI * 2);
+    ctx.fillStyle = s.color.replace(/[\d.]+\)$/g, alpha + ")");
+    ctx.fill();
+  });
+}
+
+function drawAura(ctx) {
+  if (!goldStar.alive || !goldStarAura.active) return;
+  const r = goldStarAura.radius + Math.sin(Date.now() * 0.005) * 10;
+  const grad = ctx.createRadialGradient(goldStar.x, goldStar.y, r * 0.3, goldStar.x, goldStar.y, r);
+  grad.addColorStop(0, "rgba(255,255,150,0.15)");
+  grad.addColorStop(1, getAuraSparkColor());
+  ctx.beginPath();
+  ctx.arc(goldStar.x, goldStar.y, r, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+}
+
+function applyGoldStarAuraEffects() {
+  if (!goldStar.alive || !goldStarAura.active) return;
+
+  const dx = player.x - goldStar.x;
+  const dy = player.y - goldStar.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+
+  if (dist < goldStarAura.radius) {
+    // Fire rate buff
+    player.fireRateBoost = 1 + goldStarAura.level * 0.15;
+    // Health regen over time
+    if (frameCount % Math.max(90 - goldStarAura.level * 10, 30) === 0) {
+      player.health = Math.min(player.maxHealth, player.health + 1);
+    }
+  } else {
+    player.fireRateBoost = 1;
+  }
+
+  // Slow enemy bullets in aura
+  lightning.forEach(l => {
+    const bx = l.x - goldStar.x;
+    const by = l.y - goldStar.y;
+    const bd = Math.sqrt(bx*bx + by*by);
+    if (bd < goldStarAura.radius) {
+      const slowFactor = 1 - 0.1 * (goldStarAura.level + 1);
+      l.dx *= Math.max(0.8, slowFactor);
+      l.dy *= Math.max(0.8, slowFactor);
+    }
+  });
+}
+
+function levelUpGoldStar() {
+  goldStarAura.level++;
+  updateAuraStats();
+  triggerAuraShockwave();
+}
+
+function updateGoldStarAura() {
+  updateAuraStats();
+  updateAuraSparks();
+  updateAuraShockwaves();
+  applyGoldStarAuraEffects();
+}
+
+function drawGoldStarAura(ctx) {
+  drawAura(ctx);
+  drawAuraSparks(ctx);
+  drawAuraShockwaves(ctx);
+}
+// ======== END GOLD STAR AURA SYSTEM ========
 
 let player = {
   x: canvas.width/2, y: canvas.height/2, size: 30, speed: 5,
   health: 100, maxHealth: 100, lives: 3, invulnerable: false, invulnerableTimer: 0,
-  reflectAvailable: false
+  reflectAvailable: false, fireRateBoost: 1
 };
 
 let goldStar = {
@@ -98,7 +257,7 @@ function handleShooting() {
   if ((dirX !== 0 || dirY !== 0) && shootCooldown === 0) {
     const mag = Math.hypot(dirX, dirY) || 1;
     bullets.push({x: player.x, y: player.y, dx: (dirX/mag)*10, dy: (dirY/mag)*10, size: 6, owner: "player"});
-    shootCooldown = 10;
+    shootCooldown = Math.max(5, Math.floor(10 / player.fireRateBoost));
   }
 }
 
@@ -139,7 +298,6 @@ function performRedPunch() {
   nearby.forEach(o => {
     if (!o.e) return;
     o.e.health -= damage;
-    // small impact explosion on each enemy
     createExplosion(o.e.x, o.e.y, goldStar.redPunchLevel >= 3 ? "magenta" : "orange");
 
     if (knockbackForce > 0 && o.d > 0) {
@@ -172,7 +330,6 @@ function performRedPunch() {
     }
   });
 
-  // Visual effects: brighter for levels 1-2, distinct magenta/white for level 3+
   if (goldStar.redPunchLevel <= 1) {
     redPunchEffects.push({
       x: goldStar.x,
@@ -184,7 +341,6 @@ function performRedPunch() {
       color: "rgba(255,220,120,0.9)",
       fill: true
     });
-    // a compact bright burst
     for (let i = 0; i < 8; i++) explosions.push({x: goldStar.x, y: goldStar.y, dx:(Math.random()-0.5)*8, dy:(Math.random()-0.5)*8, radius:Math.random()*6+2, color:"rgba(255,200,100,0.9)", life:12});
   } else if (goldStar.redPunchLevel === 2) {
     redPunchEffects.push({
@@ -199,7 +355,6 @@ function performRedPunch() {
     });
     for (let i = 0; i < 14; i++) explosions.push({x: goldStar.x, y: goldStar.y, dx:(Math.random()-0.5)*10, dy:(Math.random()-0.5)*10, radius:Math.random()*8+3, color:"rgba(255,140,50,0.95)", life:16});
   } else {
-    // Level 3+ distinct visual: magenta/white large blast (so it doesn't look like red-square death)
     redPunchEffects.push({
       x: goldStar.x,
       y: goldStar.y,
@@ -211,14 +366,11 @@ function performRedPunch() {
       fill: false,
       ring: true
     });
-    // intense central white flash
     explosions.push({x: goldStar.x, y: goldStar.y, dx:0, dy:0, radius: 40, color:"rgba(255,255,255,0.95)", life:8});
-    // magenta shards
     for (let i = 0; i < 20; i++) explosions.push({x: goldStar.x, y: goldStar.y, dx:(Math.random()-0.5)*12, dy:(Math.random()-0.5)*12, radius:Math.random()*6+2, color:"rgba(255,50,200,0.9)", life:22});
   }
 
   if (goldStar.redPunchLevel >= 3) {
-    // replace the older red explosion with magenta+white flash to avoid confusion with red-square death
     createExplosion(goldStar.x, goldStar.y, "magenta");
   }
 }
@@ -232,14 +384,22 @@ function updateGoldStar() {
       if (goldStar.targetPowerUp) {
         const pu = goldStar.targetPowerUp;
         if (pu.type === "red-punch") {
+          const oldLevel = goldStar.redPunchLevel;
           goldStar.redKills++;
-          if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) goldStar.redPunchLevel++;
+          if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) {
+            goldStar.redPunchLevel++;
+            levelUpGoldStar();
+          }
           createExplosion(pu.x, pu.y, "orange");
           score += 8;
         }
         else if (pu.type === "blue-cannon") {
+          const oldLevel = goldStar.blueCannonnLevel;
           goldStar.blueKills++;
-          if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) goldStar.blueCannonnLevel++;
+          if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) {
+            goldStar.blueCannonnLevel++;
+            levelUpGoldStar();
+          }
           createExplosion(pu.x, pu.y, "cyan");
           score += 8;
         }
@@ -522,7 +682,6 @@ function updateEnemies() {
         createExplosion(e.x, e.y, "orange");
         if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); }
       }
-      // If enemy died due to collision damage applied above, handle drops & score
       if (e.health <= 0) {
         if (!e.fromBoss) {
           if (e.type === "triangle") { score += 10; spawnPowerUp(e.x, e.y, "blue-cannon"); }
@@ -683,14 +842,29 @@ function checkBulletCollisions() {
 }
 
 function handlePowerUpCollections() {
-  // player collecting powerups
   for (let i = powerUps.length - 1; i >= 0; i--) {
     const p = powerUps[i];
     const dist = Math.hypot(p.x - player.x, p.y - player.y);
     if (dist < (p.size/2 + player.size/2)) {
       if (p.type === "health") { player.health = Math.min(player.maxHealth, player.health + 30); createExplosion(p.x, p.y, "magenta"); }
-      else if (p.type === "red-punch") { goldStar.redKills++; if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) goldStar.redPunchLevel++; createExplosion(p.x, p.y, "orange"); }
-      else if (p.type === "blue-cannon") { goldStar.blueKills++; if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) goldStar.blueCannonnLevel++; createExplosion(p.x, p.y, "cyan"); }
+      else if (p.type === "red-punch") { 
+        const oldLevel = goldStar.redPunchLevel;
+        goldStar.redKills++; 
+        if (goldStar.redKills % 5 === 0 && goldStar.redPunchLevel < 5) {
+          goldStar.redPunchLevel++;
+          levelUpGoldStar();
+        }
+        createExplosion(p.x, p.y, "orange"); 
+      }
+      else if (p.type === "blue-cannon") { 
+        const oldLevel = goldStar.blueCannonnLevel;
+        goldStar.blueKills++; 
+        if (goldStar.blueKills % 5 === 0 && goldStar.blueCannonnLevel < 5) {
+          goldStar.blueCannonnLevel++;
+          levelUpGoldStar();
+        }
+        createExplosion(p.x, p.y, "cyan"); 
+      }
       else if (p.type === "reflect") { player.reflectAvailable = true; goldStar.reflectAvailable = true; createExplosion(p.x, p.y, "magenta"); }
       powerUps.splice(i,1);
     }
@@ -822,7 +996,6 @@ function drawGoldStar() {
 }
 
 function drawRedPunchEffects() {
-  // Use additive blending to make the red-punch brighter
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   redPunchEffects.forEach(e => {
@@ -835,7 +1008,6 @@ function drawRedPunchEffects() {
       ctx.fill();
       ctx.globalAlpha = 1;
     } else {
-      // ring style
       ctx.beginPath();
       ctx.strokeStyle = e.color;
       ctx.lineWidth = 6 * lifeFactor;
@@ -855,6 +1027,7 @@ function drawUI() {
     ctx.fillText(`Gold Star - Red Power Lv${goldStar.redPunchLevel} (${goldStar.redKills}/${Math.ceil((goldStar.redKills+1)/5)*5})`, 20, 180);
     ctx.fillText(`Gold Star - Blue Power Lv${goldStar.blueCannonnLevel} (${goldStar.blueKills}/${Math.ceil((goldStar.blueKills+1)/5)*5})`, 20, 210);
     ctx.fillText(`GS Reflect: ${goldStar.reflectAvailable ? "READY (1 hit)" : "none"}`, 20, 240);
+    ctx.fillText(`Aura Level: ${goldStarAura.level} | Radius: ${Math.floor(goldStarAura.radius)}`, 20, 270);
   } else {
     ctx.fillStyle = "red";
     ctx.fillText(`Gold Star: DESTROYED - Respawning in ${Math.ceil((300-goldStar.respawnTimer)/60)}s`, 20, 180);
@@ -922,7 +1095,12 @@ function tryAdvanceWave() {
 }
 
 function gameLoop() {
+  frameCount++;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Draw aura behind everything
+  drawGoldStarAura(ctx);
+  
   let newX = player.x, newY = player.y;
   if (keys["w"]) newY -= player.speed; if (keys["s"]) newY += player.speed;
   if (keys["a"]) newX -= player.speed; if (keys["d"]) newX += player.speed;
@@ -939,7 +1117,9 @@ function gameLoop() {
 
   handlePowerUpCollections();
 
-  updateGoldStar(); updateRedPunchEffects();
+  updateGoldStar(); 
+  updateGoldStarAura();
+  updateRedPunchEffects();
 
   drawPlayer(); drawBullets(); drawEnemies(); drawDiamonds(); drawLightning(); drawExplosions();
   drawTunnels(); drawPowerUps(); drawGoldStar(); drawRedPunchEffects(); drawUI(); tryAdvanceWave();
