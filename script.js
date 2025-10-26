@@ -1,3 +1,4 @@
+// contents of file
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
@@ -188,6 +189,8 @@ function startCutscene() {
   cinematicStartTime = performance.now();
 
   loadCinematicImages(cinematicImagePaths, () => {
+    // ensure start timestamp is re-set when images finish loading so timing starts cleanly
+    cinematicStartTime = performance.now();
     requestAnimationFrame(cinematicTick);
   });
 }
@@ -244,6 +247,28 @@ let frameCount = 0;
 // Pickup constants
 const GOLD_STAR_PICKUP_FRAMES = 30; // 0.5s @ 60fps
 const PICKUP_RADIUS = 60; // radius for grabbing nearby power-ups
+
+// Minimum safe spawn distance to avoid spawning enemies right on top of player/goldStar
+const MIN_SPAWN_DIST = 220;
+
+function getSafeSpawnPosition(minDist = MIN_SPAWN_DIST) {
+  // Try a number of times to find a spawn position that's not too close to the player or goldStar.
+  for (let i = 0; i < 50; i++) {
+    const x = Math.random() * canvas.width;
+    const y = Math.random() * canvas.height;
+    const dxP = x - player.x, dyP = y - player.y;
+    const dxG = x - goldStar.x, dyG = y - goldStar.y;
+    const dP = Math.hypot(dxP, dyP);
+    const dG = Math.hypot(dxG, dyG);
+    if (dP >= minDist && dG >= minDist) return { x, y };
+  }
+  // fallback: return a position along edges if we couldn't find a safe spot
+  const edge = Math.floor(Math.random() * 4);
+  if (edge === 0) return { x: 10, y: Math.random() * canvas.height };
+  if (edge === 1) return { x: canvas.width - 10, y: Math.random() * canvas.height };
+  if (edge === 2) return { x: Math.random() * canvas.width, y: 10 };
+  return { x: Math.random() * canvas.width, y: canvas.height - 10 };
+}
 
 // ======== GOLD STAR AURA SYSTEM ========
 const goldStarAura = {
@@ -341,7 +366,9 @@ function drawAuraShockwaves(ctx) {
     const alpha = s.life / s.maxLife;
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-    ctx.strokeStyle = s.color.replace(/[\d.]+\)$/g, (0.4 * alpha) + ")");
+    // ensure color's alpha is replaced correctly
+    const color = s.color.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, `rgba($1,$2,$3,${0.4 * alpha})`);
+    ctx.strokeStyle = color;
     ctx.lineWidth = 6 - 4 * (1 - alpha);
     ctx.stroke();
   });
@@ -367,7 +394,8 @@ function drawAuraSparks(ctx) {
     const alpha = s.life / 30;
     ctx.beginPath();
     ctx.arc(s.x, s.y, 2, 0, Math.PI * 2);
-    ctx.fillStyle = s.color.replace(/[\d.]+\)$/g, alpha + ")");
+    const color = s.color.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, `rgba($1,$2,$3,${alpha})`);
+    ctx.fillStyle = color;
     ctx.fill();
   });
 }
@@ -516,34 +544,53 @@ function respawnPlayer() {
 }
 
 function spawnRedSquares(c, fromBoss = false) {
-  for (let i = 0; i < c; i++) enemies.push({
-    x: Math.random()*canvas.width,
-    y: Math.random()*(canvas.height/2),
-    size: 30, speed: 1.8, health: 30, type: "red-square", shootTimer: 0, fromBoss
-  });
+  for (let i = 0; i < c; i++) {
+    const pos = getSafeSpawnPosition();
+    enemies.push({
+      x: pos.x,
+      y: pos.y,
+      size: 30, speed: 1.8, health: 30, type: "red-square", shootTimer: 0, fromBoss
+    });
+  }
 }
 function spawnTriangles(c, fromBoss = false) {
-  for (let i = 0; i < c; i++) enemies.push({
-    x: Math.random()*canvas.width,
-    y: Math.random()*canvas.height,
-    size: 30, speed: 1.5, health: 40, type: "triangle", shootTimer: 0, fromBoss
-  });
+  for (let i = 0; i < c; i++) {
+    const pos = getSafeSpawnPosition();
+    enemies.push({
+      x: pos.x,
+      y: pos.y,
+      size: 30, speed: 1.5, health: 40, type: "triangle", shootTimer: 0, fromBoss
+    });
+  }
 }
 function spawnReflectors(c) {
-  for (let i = 0; i < c; i++) enemies.push({
-    x: Math.random()*canvas.width,
-    y: Math.random()*canvas.height,
-    width: 40, height: 20, angle: 0, speed: 1.2, health: 200, type: "reflector", shieldActive: false, fromBoss: false
-  });
+  for (let i = 0; i < c; i++) {
+    const pos = getSafeSpawnPosition();
+    enemies.push({
+      x: pos.x,
+      y: pos.y,
+      width: 40, height: 20, angle: 0, speed: 1.2, health: 200, type: "reflector", shieldActive: false, fromBoss: false
+    });
+  }
 }
 function spawnBoss() {
-  enemies.push({x: canvas.width/2, y: 100, size: 150, health: 1000, type: "boss", spawnTimer: 0, shootTimer: 0, angle: 0});
+  // ensure boss doesn't spawn on top of player / goldStar
+  let pos = { x: canvas.width/2, y: 100 };
+  const dP = Math.hypot(pos.x - player.x, pos.y - player.y);
+  const dG = Math.hypot(pos.x - goldStar.x, pos.y - goldStar.y);
+  if (dP < MIN_SPAWN_DIST || dG < MIN_SPAWN_DIST) {
+    pos = getSafeSpawnPosition(MIN_SPAWN_DIST + 50);
+  }
+  enemies.push({x: pos.x, y: pos.y, size: 150, health: 1000, type: "boss", spawnTimer: 0, shootTimer: 0, angle: 0});
 }
 function spawnMiniBoss() {
-  enemies.push({x: Math.random()*canvas.width, y: 120+Math.random()*60, size: 80, health: 500, type: "mini-boss", spawnTimer: 0, shootTimer: 0, angle: Math.random()*Math.PI*2});
+  const pos = getSafeSpawnPosition();
+  enemies.push({x: pos.x, y: pos.y, size: 80, health: 500, type: "mini-boss", spawnTimer: 0, shootTimer: 0, angle: Math.random()*Math.PI*2});
 }
 function spawnDiamondEnemy() {
-  diamonds.push({x: canvas.width/2, y: canvas.height/3, size: 40, health: 200, type: "diamond", attachments: [], canReflect: false, angle: Math.random()*Math.PI*2, shootTimer: 0, pulse: 0});
+  // diamond orbits, but ensure initial spawn isn't too close
+  const pos = getSafeSpawnPosition();
+  diamonds.push({x: pos.x, y: pos.y, size: 40, health: 200, type: "diamond", attachments: [], canReflect: false, angle: Math.random()*Math.PI*2, shootTimer: 0, pulse: 0});
 }
 function spawnPowerUp(x, y, type) {
   powerUps.push({x, y, type, size: 18, lifetime: 600, active: true});
@@ -1196,7 +1243,15 @@ function drawEnemies() {
   enemies.forEach(e => {
     if (!e) return;
     if (e.type === "red-square") { ctx.fillStyle = "red"; ctx.fillRect(e.x-e.size/2, e.y-e.size/2, e.size, e.size); }
-    else if (e.type === "triangle") { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.moveTo(e.x, e.y-e.size/2); ctx.lineTo(e.x-e.size/2, e.y+e.size/2); ctx.lineTo(e.x+e.size/2, e.y+e.size/2); ctx.closePath(); ctx.fill(); }
+    else if (e.type === "triangle") {
+      ctx.fillStyle = "cyan";
+      ctx.beginPath();
+      ctx.moveTo(e.x, e.y-e.size/2);
+      ctx.lineTo(e.x-e.size/2, e.y+e.size/2);
+      ctx.lineTo(e.x+e.size/2, e.y+e.size/2);
+      ctx.closePath();
+      ctx.fill();
+    }
     else if (e.type === "boss") { ctx.fillStyle = "yellow"; ctx.beginPath(); ctx.arc(e.x, e.y, e.size/2, 0, Math.PI*2); ctx.fill(); }
     else if (e.type === "mini-boss") { ctx.fillStyle = "orange"; ctx.beginPath(); ctx.arc(e.x, e.y, e.size/2, 0, Math.PI*2); ctx.fill(); }
     else if (e.type === "reflector") {
@@ -1636,4 +1691,7 @@ function gameLoop() {
 }
 
 window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
-wave = 0; waveTransition = false; waveTransitionTimer = 0; spawnWave(wave); gameLoop();
+
+// start cinematic at load so the intro runs before waves start
+wave = 0; waveTransition = false; waveTransitionTimer = 0;
+startCutscene();
