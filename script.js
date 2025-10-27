@@ -1,8 +1,3 @@
-// Debugged copy of script.js
-// Fixed a syntax error (restored a truncated line `e.health -= 100;`) that prevented the script from parsing.
-// Minor runtime-safety fixes added to ensure the canvas exists and to guard cutscene progression.
-// No other game logic behavior intentionally changed.
-
 let canvas, ctx;
 
 function ensureCanvas() {
@@ -250,6 +245,147 @@ function drawEnemyScene(t, p) {
   }
 }
 
+// New cinematic helper: diamond destroying green squares scene (used for the "Mother Diamond has been destroying..." line)
+function drawDiamondDestructionScene(t, p) {
+  // background
+  ctx.fillStyle = "#040812";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // stars
+  for (let i = 0; i < 120; i++) {
+    const x = (i * 97) % canvas.width;
+    const y = (i * 199) % canvas.height;
+    ctx.fillStyle = `rgba(180,255,200,${0.15 + Math.abs(Math.sin(t*0.001 + i))*0.4})`;
+    ctx.fillRect(x, y, 1, 1);
+  }
+
+  // mother diamond center (big and ominous)
+  const centerX = canvas.width * 0.6;
+  const centerY = canvas.height * 0.45;
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  const s = 220 + Math.sin(t*0.001)*8 + p*60;
+  ctx.rotate(t*0.0002);
+  ctx.shadowBlur = 50;
+  ctx.shadowColor = "rgba(0,200,255,0.8)";
+  ctx.strokeStyle = "rgba(0,150,255,0.9)";
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(0, -s/2);
+  ctx.lineTo(s/2, 0);
+  ctx.lineTo(0, s/2);
+  ctx.lineTo(-s/2, 0);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(20,40,80,0.9)";
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  ctx.shadowBlur = 0;
+
+  // Green squares being pulled and destroyed
+  for (let i = 0; i < 10; i++) {
+    const tOff = t*0.001 + i;
+    const baseX = canvas.width * 0.2 + i * (canvas.width*0.6/10);
+    const baseY = canvas.height * 0.65 + Math.sin(tOff) * 30;
+    const pull = Math.min(1, (p*2) + Math.max(0, 1 - ((Math.hypot(baseX-centerX, baseY-centerY) - 50) / 600)));
+    const size = 30 * (1 - pull*0.8);
+    const x = baseX + (centerX - baseX) * pull + (Math.random()-0.5)*10*pull;
+    const y = baseY + (centerY - baseY) * pull + (Math.random()-0.5)*10*pull;
+    ctx.fillStyle = `rgba(0,200,0,${0.6 - pull*0.5})`;
+    ctx.fillRect(x - size/2, y - size/2, Math.max(4,size), Math.max(4,size));
+    // destruction sparks when pulled close
+    if (pull > 0.6) {
+      for (let j=0;j<3;j++){
+        ctx.fillStyle = `rgba(0,255,120,${0.6 - pull*0.4})`;
+        ctx.fillRect(x + (Math.random()-0.5)*20, y + (Math.random()-0.5)*20, 3, 3);
+      }
+    }
+  }
+
+  // overlay text
+  if (p > 0.15) {
+    drawTextBox([
+      'Commander: "The Mother Diamond has been',
+      'destroying all the Green Squares on Earth.',
+      'We\'re the last ones left."'
+    ], 50, canvas.height - 170, canvas.width - 100);
+  }
+}
+
+// New cinematic helper: mother diamond and enemies scene (used for the "Pilot, you must reach..." line)
+function drawMotherDiamondAndEnemiesScene(t, p) {
+  // dim background
+  ctx.fillStyle = "#02010a";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // distant mother diamond (smaller than previous scene but with enemies orbiting)
+  const centerX = canvas.width * 0.55;
+  const centerY = canvas.height * 0.35;
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  const s = 140 + p*40;
+  ctx.rotate(Math.sin(t*0.0005)*0.2);
+  ctx.shadowBlur = 40;
+  ctx.shadowColor = "rgba(255,60,60,0.7)";
+  ctx.fillStyle = "#220022";
+  ctx.beginPath();
+  ctx.moveTo(0, -s/2);
+  ctx.lineTo(s/2, 0);
+  ctx.lineTo(0, s/2);
+  ctx.lineTo(-s/2, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  ctx.shadowBlur = 0;
+
+  // enemies around the diamond (triangles and red squares)
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI*2 + t*0.0006 + p*1.2;
+    const dist = 160 + Math.sin(t*0.001 + i)*20 + p*40;
+    const ex = centerX + Math.cos(angle) * dist;
+    const ey = centerY + Math.sin(angle) * dist;
+    // alternate shape
+    if (i % 2 === 0) {
+      // triangle
+      const size = 28 + Math.sin(t*0.002 + i)*4;
+      ctx.fillStyle = "rgba(100,200,255,0.9)";
+      ctx.beginPath();
+      ctx.moveTo(ex, ey - size/2);
+      ctx.lineTo(ex - size/2, ey + size/2);
+      ctx.lineTo(ex + size/2, ey + size/2);
+      ctx.closePath();
+      ctx.fill();
+      // brief red charge dot near tip for dramatic effect
+      const charge = Math.min(1, Math.max(0, p + (Math.sin(t*0.005 + i)*0.5 + 0.5)));
+      if (charge > 0.6) {
+        const cp = (charge - 0.6) / 0.4;
+        ctx.fillStyle = `rgba(255,60,60,${cp})`;
+        const tx = ex, ty = ey - size/2;
+        ctx.beginPath();
+        ctx.arc(tx, ty + (1-cp)*6, 4 + cp*6, 0, Math.PI*2);
+        ctx.fill();
+      }
+    } else {
+      // red square
+      const size = 26 + Math.cos(t*0.002 + i)*3;
+      ctx.fillStyle = "rgba(255,60,60,0.95)";
+      ctx.fillRect(ex - size/2, ey - size/2, size, size);
+      // green sparks to show hostility
+      if (p > 0.4) {
+        ctx.fillStyle = `rgba(0,255,0,${0.3 + (Math.random()*0.4)})`;
+        ctx.fillRect(ex + (Math.random()-0.5)*10, ey + (Math.random()-0.5)*10, 3, 3);
+      }
+    }
+  }
+
+  // caption
+  drawTextBox([
+    `Commander: "${cinematic.playerName || "Pilot"}, you must reach the`,
+    'Mother Diamond and destroy it.',
+    'Then we can take back Earth."'
+  ], 50, canvas.height - 170, canvas.width - 100);
+}
+
 function drawGoldStarLaunch(t, p) {
   ctx.fillStyle = "#000814";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -331,30 +467,19 @@ function makeCutsceneScenes() {
     }
   });
 
+  // Scene 2: when commander speaks about Mother Diamond destroying green squares -> show diamond-destruction scene
   scenes.push({
     duration: 4500,
     draw: (t, p) => {
-      drawEnemyScene(t, p);
-      drawTextBox([
-        'Commander: "The Mother Diamond has been',
-        'destroying all the Green Squares on Earth.',
-        'We\'re the last ones left."'
-      ], 50, canvas.height - 170, canvas.width - 100);
+      drawDiamondDestructionScene(t, p);
     }
   });
 
+  // Scene 3: when the commander says the player must reach the Mother Diamond -> show mother diamond + enemies
   scenes.push({
     duration: 4000,
     draw: (t, p) => {
-      ctx.fillStyle = "#080a10";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      const name = cinematic.playerName || "Pilot";
-      drawTextBox([
-        `Commander: "${name}, you must reach the`,
-        'Mother Diamond and destroy it.',
-        'Then we can take back Earth."'
-      ], 50, canvas.height - 170, canvas.width - 100);
+      drawMotherDiamondAndEnemiesScene(t, p);
     }
   });
 
@@ -704,9 +829,22 @@ function applyGoldStarAuraEffects() {
   const dist = Math.sqrt(dx*dx + dy*dy);
 
   if (dist < goldStarAura.radius) {
-    player.fireRateBoost = 1 + goldStarAura.level * 0.15;
-    if (frameCount % Math.max(90 - goldStarAura.level * 10, 30) === 0) {
-      player.health = Math.min(player.maxHealth, player.health + 1);
+    // NEW BEHAVIOR: if gold star is not full, being in the aura causes the player to heal the gold star
+    if (goldStar.health < goldStar.maxHealth) {
+      // Heal the gold star over time while the player is in the aura.
+      // This represents the player recharging / channeling the gold star.
+      if (frameCount % 30 === 0) {
+        goldStar.health = Math.min(goldStar.maxHealth, goldStar.health + 2);
+        // small visual hint: spawn a light explosion at goldStar
+        createExplosion(goldStar.x + (Math.random()-0.5)*8, goldStar.y + (Math.random()-0.5)*8, "magenta");
+      }
+      player.fireRateBoost = 1 + goldStarAura.level * 0.15;
+    } else {
+      // gold star is full -> aura heals the player (previous behavior)
+      player.fireRateBoost = 1 + goldStarAura.level * 0.15;
+      if (frameCount % Math.max(90 - goldStarAura.level * 10, 30) === 0) {
+        player.health = Math.min(player.maxHealth, player.health + 1);
+      }
     }
   } else {
     player.fireRateBoost = 1;
@@ -1529,6 +1667,36 @@ function drawEnemies() {
       ctx.strokeStyle = `rgba(255,100,100,${pulse})`;
       ctx.lineWidth = 2;
       ctx.strokeRect(e.x-e.size/2, e.y-e.size/2, e.size, e.size);
+
+      // New: small blue eye that appears when close to player or goldStar and follows them
+      try {
+        const eyeTriggerDist = 140;
+        const dxP = player.x - e.x, dyP = player.y - e.y, dP = Math.hypot(dxP, dyP);
+        const dxG = goldStar.x - e.x, dyG = goldStar.y - e.y, dG = Math.hypot(dxG, dyG);
+        let target = null, td = Infinity;
+        if (dP < eyeTriggerDist) { target = {x: player.x, y: player.y}; td = dP; }
+        if (dG < eyeTriggerDist && dG < td) { target = {x: goldStar.x, y: goldStar.y}; td = dG; }
+        if (target) {
+          const insideRadius = Math.min(6, e.size/4);
+          const dirX = target.x - e.x, dirY = target.y - e.y;
+          const mag = Math.hypot(dirX, dirY) || 1;
+          const eyeOffset = Math.min(insideRadius, Math.max(2, insideRadius * 0.8));
+          const eyeX = e.x + (dirX / mag) * eyeOffset;
+          const eyeY = e.y + (dirY / mag) * eyeOffset;
+          // sclera
+          ctx.beginPath();
+          ctx.fillStyle = "rgba(160,200,255,0.95)";
+          ctx.arc(eyeX, eyeY, 5, 0, Math.PI*2);
+          ctx.fill();
+          // pupil
+          ctx.beginPath();
+          ctx.fillStyle = "rgba(10,40,120,0.95)";
+          const pupilX = eyeX + (dirX / mag) * 2;
+          const pupilY = eyeY + (dirY / mag) * 2;
+          ctx.arc(pupilX, pupilY, 2.2, 0, Math.PI*2);
+          ctx.fill();
+        }
+      } catch (err) {}
     }
     else if (e.type === "triangle") { 
       // Enhanced triangle with glow and trail
@@ -1553,6 +1721,34 @@ function drawEnemies() {
       ctx.lineTo(e.x+e.size/2, e.y+e.size/2); 
       ctx.closePath(); 
       ctx.stroke();
+
+      // New: red charge dot that powers up to the tip before it fires and then disappears
+      try {
+        const fireRate = 100; // same as in updateEnemies
+        const chargeTime = 30;
+        const chargeStart = Math.max(0, fireRate - chargeTime);
+        const st = e.shootTimer || 0;
+        if (st > chargeStart) {
+          const progress = Math.min(1, (st - chargeStart) / chargeTime);
+          // center -> tip (tip is at e.x, e.y - e.size/2)
+          const cx = e.x, cy = e.y;
+          const tx = e.x, ty = e.y - e.size/2;
+          const dotX = cx + (tx - cx) * progress;
+          const dotY = cy + (ty - cy) * progress;
+          ctx.beginPath();
+          ctx.fillStyle = `rgba(255,50,50,${0.4 + progress*0.6})`;
+          const r = 3 + progress * 4;
+          ctx.arc(dotX, dotY, r, 0, Math.PI*2);
+          ctx.fill();
+          // small glow near tip when fully charged
+          if (progress >= 1) {
+            ctx.beginPath();
+            ctx.fillStyle = "rgba(255,80,80,0.6)";
+            ctx.arc(tx, ty, 6, 0, Math.PI*2);
+            ctx.fill();
+          }
+        }
+      } catch (err) {}
     }
     else if (e.type === "boss") { 
       // Enhanced boss with pulsing aura
