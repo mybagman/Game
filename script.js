@@ -267,12 +267,7 @@ function drawLaunchBayScene(t, p) {
     ctx.arc(eyeX, eyeY, 8 + 4 * eyeAppear, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
-    // pupil moves slightly left->right to emphasize scanning
-    ctx.fillStyle = "black";
-    const pupilOffset = (eyeProgress - 0.5) * 6;
-    ctx.beginPath();
-    ctx.arc(eyeX + pupilOffset, eyeY, 3, 0, Math.PI * 2);
-    ctx.fill();
+    // pupil removed per user request: keep only glow (no black pupil)
     // small scanning beam when fully active
     if (eyeProgress > 0.6) {
       ctx.globalAlpha = Math.min(0.6, (eyeProgress - 0.6) / 0.4 * 0.6);
@@ -951,7 +946,8 @@ function endCutscene() {
   wave = 0;
   waveTransition = false;
   spawnWave(wave);
-  gameLoop();
+  // start the main game loop
+  requestAnimationFrame(gameLoop);
 }
 
 // ======= Game state and systems =======
@@ -2061,13 +2057,8 @@ function drawEnemies() {
           ctx.fillStyle = "rgba(160,200,255,0.95)";
           ctx.arc(eyeX, eyeY, 5, 0, Math.PI*2);
           ctx.fill();
-          // pupil
-          ctx.beginPath();
-          ctx.fillStyle = "rgba(10,40,120,0.95)";
-          const pupilX = eyeX + (dirX / mag) * 2;
-          const pupilY = eyeY + (dirY / mag) * 2;
-          ctx.arc(pupilX, pupilY, 2.2, 0, Math.PI*2);
-          ctx.fill();
+          // pupil removed here for glow-only eye (per user request)
+          // previously a dark pupil was drawn; we simply keep the sclera/glow
         }
       } catch (err) {}
     }
@@ -2614,3 +2605,88 @@ function tryAdvanceWave() {
 }
 
 // update and draw reflection effects
+
+function updateAndDrawReflectionEffects() {
+  for (let i = reflectionEffects.length - 1; i >= 0; i--) {
+    const r = reflectionEffects[i];
+    r.life--;
+    // draw small streak
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = "rgba(180,240,255," + (r.life / (r.maxLife || 20)) + ")";
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, Math.max(1, r.life / 3), 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    if (r.life <= 0) reflectionEffects.splice(i, 1);
+  }
+}
+
+// Minimal game loop to ensure gameplay runs (added to fix "gameplay not starting")
+function gameLoop(now) {
+  // keep cinematic from interfering
+  if (cinematic.playing) return;
+
+  frameCount++;
+
+  // updates
+  handleShooting();
+  updateBullets();
+  updateLightning();
+  updateExplosions();
+  updatePowerUps();
+  updateTunnels();
+  updateRedPunchEffects();
+  updateGoldStarAura();
+  updateGoldStar();
+  updateEnemies();
+  checkBulletCollisions();
+  tryAdvanceWave();
+
+  // handle player death / lives
+  if (player.health <= 0) {
+    player.lives--;
+    if (player.lives > 0) {
+      respawnPlayer();
+    } else {
+      gameOver = true;
+      saveHighScoresOnGameOver();
+    }
+  }
+
+  // draw
+  if (!ensureCanvas()) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // background / world
+  drawTunnels();
+  drawDiamonds();
+  drawEnemies();
+  drawBullets();
+  drawLightning();
+  drawExplosions();
+  drawPowerUps();
+  drawGoldStar();
+  drawGoldStarAura(ctx);
+  drawRedPunchEffects();
+  drawPlayer();
+  updateAndDrawReflectionEffects();
+  drawUI();
+
+  // if game over show overlay and stop loop
+  if (gameOver) {
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "white";
+    ctx.font = "48px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+    ctx.font = "20px Arial";
+    ctx.fillText("Press R to restart", canvas.width / 2, canvas.height / 2 + 30);
+    ctx.restore();
+    return;
+  }
+
+  requestAnimationFrame(gameLoop);
+}
