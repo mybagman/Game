@@ -167,6 +167,74 @@ function drawEnemyScene(t, p) {
     ctx.fillRect(canvas.width * 0.3 + xOffset + i * 80, yPos, size, size);
   }
   
+  function drawEnemyScene(t, p) {
+  ctx.fillStyle = "#05000a";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  for (let i = 0; i < 150; i++) {
+    const x = (i * 171) % canvas.width;
+    const y = (i * 293) % canvas.height;
+    const brightness = 0.3 + Math.sin(t * 0.001 + i) * 0.3;
+    ctx.fillStyle = `rgba(255,100,100,${brightness})`;
+    ctx.fillRect(x, y, 1, 1);
+  }
+  
+  ctx.save();
+  ctx.translate(canvas.width * 0.5, canvas.height * 0.35);
+  const pulse = Math.sin(t * 0.003) * 20;
+  ctx.rotate(t * 0.0005);
+  
+  ctx.strokeStyle = `rgba(255,50,50,${0.6 + Math.sin(t * 0.002) * 0.3})`;
+  ctx.lineWidth = 4;
+  ctx.shadowBlur = 40;
+  ctx.shadowColor = "red";
+  
+  const dSize = 150 + pulse;
+  ctx.beginPath();
+  ctx.moveTo(0, -dSize);
+  ctx.lineTo(dSize, 0);
+  ctx.lineTo(0, dSize);
+  ctx.lineTo(-dSize, 0);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+  
+  // Green squares being destroyed
+  for (let i = 0; i < 5; i++) {
+    const xOffset = Math.sin(t * 0.001 + i) * 100;
+    const yPos = canvas.height * 0.6 + i * 40;
+    const size = 25 + Math.sin(t * 0.002 + i) * 5;
+    const destruction = Math.min(1, (t / 4500) + i * 0.1);
+    
+    ctx.fillStyle = `rgba(0,255,0,${(0.6 - destruction * 0.6) + Math.sin(t * 0.002 + i) * 0.3})`;
+    ctx.fillRect(canvas.width * 0.3 + xOffset + i * 80, yPos, size * (1 - destruction * 0.5), size * (1 - destruction * 0.5));
+    
+    // Destruction particles
+    if (destruction > 0.3) {
+      for (let j = 0; j < 3; j++) {
+        const px = canvas.width * 0.3 + xOffset + i * 80 + (Math.random() - 0.5) * 40 * destruction;
+        const py = yPos + (Math.random() - 0.5) * 40 * destruction;
+        ctx.fillStyle = `rgba(0,255,0,${(1 - destruction) * 0.5})`;
+        ctx.fillRect(px, py, 3, 3);
+      }
+    }
+  }
+  
+  for (let i = 0; i < 4; i++) {
+    const xOffset = Math.cos(t * 0.0015 + i) * 120;
+    const yPos = canvas.height * 0.7 + i * 35;
+    const size = 30;
+    
+    ctx.fillStyle = `rgba(0,255,255,${0.5 + Math.cos(t * 0.002 + i) * 0.3})`;
+    ctx.beginPath();
+    ctx.moveTo(canvas.width * 0.6 + xOffset + i * 70, yPos - size/2);
+    ctx.lineTo(canvas.width * 0.6 + xOffset + i * 70 - size/2, yPos + size/2);
+    ctx.lineTo(canvas.width * 0.6 + xOffset + i * 70 + size/2, yPos + size/2);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
   for (let i = 0; i < 4; i++) {
     const xOffset = Math.cos(t * 0.0015 + i) * 120;
     const yPos = canvas.height * 0.7 + i * 35;
