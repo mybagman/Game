@@ -249,6 +249,40 @@ function drawLaunchBayScene(t, p) {
   ctx.fillRect(squareX, squareY, squareSize, squareSize);
   ctx.shadowBlur = 0;
 
+  // New: as hoses disconnect the green square activates with a red eye that scans left->right
+  // eye appears gradually as disconnectProgress increases
+  const eyeAppear = Math.max(0, Math.min(1, disconnectProgress * 1.4));
+  if (eyeAppear > 0.02) {
+    const innerPad = 8;
+    const travelWidth = squareSize - innerPad * 2;
+    const eyeProgress = Math.max(0, Math.min(1, (disconnectProgress - 0.05) / 0.95)); // start slightly after
+    const eyeX = squareX + innerPad + travelWidth * eyeProgress;
+    const eyeY = squareY + squareSize / 2;
+    ctx.save();
+    // glow and scanner effect
+    ctx.shadowBlur = 18 * eyeAppear;
+    ctx.shadowColor = "rgba(255,40,40,0.9)";
+    ctx.fillStyle = `rgba(255,60,60,${0.6 + eyeAppear * 0.4})`;
+    ctx.beginPath();
+    ctx.arc(eyeX, eyeY, 8 + 4 * eyeAppear, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // pupil moves slightly left->right to emphasize scanning
+    ctx.fillStyle = "black";
+    const pupilOffset = (eyeProgress - 0.5) * 6;
+    ctx.beginPath();
+    ctx.arc(eyeX + pupilOffset, eyeY, 3, 0, Math.PI * 2);
+    ctx.fill();
+    // small scanning beam when fully active
+    if (eyeProgress > 0.6) {
+      ctx.globalAlpha = Math.min(0.6, (eyeProgress - 0.6) / 0.4 * 0.6);
+      ctx.fillStyle = "rgba(255,40,40,0.12)";
+      ctx.fillRect(squareX, eyeY - 2, squareSize * (0.4 + 0.6 * Math.sin(Date.now()*0.004)), 4);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
   // Add Year 2050 and location text (slightly dimmer)
   ctx.fillStyle = "rgba(255,255,255,0.8)";
   ctx.font = "24px Arial";
@@ -440,6 +474,54 @@ function drawDiamondDestructionScene(t, p) {
     }
   }
 
+  // Add cinematic: diamond powers up and fires a large laser blast when the commander line plays
+  // Bias the reveal to make the text appear earlier; we also use p to control charge/fire timing
+  const chargeStart = 0.12;
+  const chargePhase = Math.max(0, Math.min(1, (p - chargeStart) / (1 - chargeStart))); // 0..1
+  if (chargePhase > 0.05) {
+    const charge = Math.min(1, chargePhase * 1.6);
+    // pulsing ring around diamond to show power build
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = `rgba(255,80,80,${0.55 * charge})`;
+    ctx.lineWidth = 6 + 24 * charge;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 120 + 80 * charge, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Fire the beam when chargePhase passes threshold
+  if (chargePhase > 0.65) {
+    const fireAlpha = Math.min(1, (chargePhase - 0.65) / 0.35);
+    // large vertical laser beam (visual)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // core
+    ctx.fillStyle = `rgba(255,40,40,${0.85 * fireAlpha})`;
+    ctx.fillRect(centerX - 6, 0, 12, canvas.height);
+    // outer glow
+    ctx.fillStyle = `rgba(255,120,80,${0.6 * fireAlpha})`;
+    ctx.fillRect(centerX - 24, 0, 48, canvas.height);
+    // beam flare near diamond
+    ctx.shadowBlur = 60 * fireAlpha;
+    ctx.shadowColor = 'rgba(255,140,100,0.9)';
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 80 * fireAlpha, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(255,220,160,${0.6 * fireAlpha})`;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // small debris particles streaking away
+    for (let i = 0; i < 8 * Math.ceil(fireAlpha*2); i++) {
+      const sx = centerX + (Math.random()-0.5)*80;
+      const sy = centerY + (Math.random()-0.5)*40;
+      ctx.fillStyle = `rgba(255,150,120,${0.3 * fireAlpha})`;
+      ctx.fillRect(sx + (Math.random()*400 - 200) * fireAlpha, sy + (Math.random()*400 - 200) * fireAlpha, 3, 3);
+    }
+  }
+
   // overlay text - use typing effect reveal based on p, typed faster and held longer
   if (p > 0.12) {
     // bias reveal: speed up typing (1.9x), ensure it appears earlier
@@ -457,6 +539,22 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
   // dim background
   ctx.fillStyle = "#02010a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Distant enemies flying past like an invasion - many small silhouettes streaking across
+  const invasionCount = 24;
+  for (let i = 0; i < invasionCount; i++) {
+    const speed = 0.6 + (i % 4) * 0.2 + p * 2.0; // speed increases with approach
+    const x = ((t||0) * 0.08 * speed + i * 350) % (canvas.width * 1.6) - canvas.width * 0.3 - (p * canvas.width * 0.8);
+    const y = (i * 37) % canvas.height;
+    const size = 8 + (i % 3) * 4 + p * 6;
+    const alpha = 0.2 + 0.8 * Math.max(0, p * 1.2 - Math.abs((y / canvas.height) - 0.5));
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(200,60,60,${alpha})`;
+    // tiny streak
+    ctx.fillRect(x, y, Math.max(2, size * (1 + p*1.5)), Math.max(2, size*0.6));
+    ctx.restore();
+  }
 
   // distant mother diamond (smaller than previous scene but with enemies orbiting)
   const centerX = canvas.width * 0.55;
@@ -832,6 +930,7 @@ window.addEventListener('keydown', (e) => {
 
 function resetGame() {
   bullets = []; lightning = []; enemies = []; diamonds = []; powerUps = []; explosions = []; tunnels = []; minionsToAdd = [];
+  reflectionEffects = [];
   score = 0;
   wave = 0;
   waveTransition = false;
@@ -863,6 +962,9 @@ let score = 0, wave = 0, minionsToAdd = [];
 let shootCooldown = 0, waveTransition = false, waveTransitionTimer = 0;
 const WAVE_BREAK_MS = 2500;
 let frameCount = 0;
+
+// Reflection visual effects for reflectors
+let reflectionEffects = [];
 
 // Firing indicator angle
 let firingIndicatorAngle = 0;
@@ -1055,7 +1157,7 @@ function applyGoldStarAuraEffects() {
       if (toHeal > 0) {
         goldStar.health = Math.min(goldStar.maxHealth, goldStar.health + toHeal);
         goldStar.healAccumulator -= toHeal;
-        // visual hint
+        // visual hint (kept minimal because we replace with electrical connection)
         createExplosion(goldStar.x + (Math.random()-0.5)*8, goldStar.y + (Math.random()-0.5)*8, "magenta");
       }
       player.fireRateBoost = 1 + goldStarAura.level * 0.15;
@@ -1119,6 +1221,34 @@ function drawGoldStarAura(ctx) {
   drawAura(ctx);
   drawAuraSparks(ctx);
   drawAuraShockwaves(ctx);
+
+  // New: draw electrical connection between gold star and player when aura active & healing is happening
+  if (goldStar.alive && goldStarAura.active) {
+    const healingActive = (goldStar.health < goldStar.maxHealth) || (player.health < player.maxHealth && goldStar.health >= goldStar.maxHealth);
+    if (healingActive) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 3; i++) {
+        const t = Date.now() * 0.002 + i * 7;
+        const jitter = 12 + i * 2;
+        ctx.strokeStyle = `rgba(${200 - i*40},${220 - i*40},255,${0.15 + 0.25 * Math.abs(Math.sin(t))})`;
+        ctx.lineWidth = 2 + i * 0.6;
+        ctx.beginPath();
+        const steps = 6;
+        const sx = goldStar.x, sy = goldStar.y;
+        const tx = player.x, ty = player.y;
+        ctx.moveTo(sx, sy);
+        for (let s = 1; s <= steps; s++) {
+          const u = s / steps;
+          const nx = sx + (tx - sx) * u + (Math.sin(t * (1 + s*0.1)) * jitter * (1 - u*0.8));
+          const ny = sy + (ty - sy) * u + (Math.cos(t * (1 + s*0.12)) * jitter * (u*0.4));
+          ctx.lineTo(nx, ny);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
 }
 // ======== END GOLD STAR AURA SYSTEM ========
 
@@ -1534,7 +1664,7 @@ function updateMiniBoss(boss) {
   boss.spawnTimer = boss.spawnTimer||0; boss.spawnTimer++;
   if (boss.spawnTimer > 300) {
     boss.spawnTimer = 0;
-    minionsToAdd.push({x: boss.x+(Math.random()-0.5)*80, y: boss.y+(Math.random()-0.5)*80, size: 20, speed: 2.2, health: 30, type: "triangle", fromBoss: true});
+    minionsToAdd.push({x: boss.x+(Math.random()-0.5)*80, y: boss.y+(Math.random()-0.5)*80, size: 25, speed: 2.2, health: 30, type: "triangle", fromBoss: true});
   }
   boss.shootTimer = boss.shootTimer||0; boss.shootTimer++;
   if (boss.shootTimer > 180) {
@@ -1557,8 +1687,8 @@ function updateDiamond(d) {
   } else {
     d.angle += 0.01;
     const radius = Math.min(300, Math.max(120, (canvas.width+canvas.height)/8));
-    d.x = canvas.width/2 + Math.cos(d.angle)*radius;
-    d.y = canvas.height/2 + Math.sin(d.angle)*radius;
+    d.x = canvas.width/2 + Math.cos(d.angle) * radius;
+    d.y = canvas.height/2 + Math.sin(d.angle) * radius;
   }
 
   for (let i = enemies.length-1; i >= 0; i--) {
@@ -1601,6 +1731,8 @@ function updateDiamond(d) {
         const b = bullets[bi], distB = Math.hypot(b.x-a.x, b.y-a.y);
         if (distB < 40) {
           lightning.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 6, damage: 15});
+          // visual reflection effect
+          reflectionEffects.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, life: 22, maxLife: 22});
           bullets.splice(bi,1);
         }
       }
@@ -1716,10 +1848,21 @@ function updateEnemies() {
         const b = bullets[bi];
         const dist = Math.hypot(b.x - e.x, b.y - e.y);
         if (dist < 50) {
+          // Reflect: push visual effect
           lightning.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 6, damage: 15});
+          reflectionEffects.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, life: 24, maxLife: 24});
           bullets.splice(bi,1);
           e.health -= 5;
+          if (e.health <= 0) { createExplosion(e.x, e.y, "purple"); enemies.splice(ei,1); if (!e.fromBoss) { score += 20; spawnPowerUp(e.x, e.y, "health"); spawnPowerUp(e.x, e.y, "reflect"); } }
+          // NOTE: ei is not in scope here; we'll avoid removing by index calculation below
         }
+      }
+
+      // fix: remove dead reflectors by checking health afterwards
+      if (e.health <= 0) {
+        createExplosion(e.x, e.y, "purple");
+        if (!e.fromBoss) { score += 20; spawnPowerUp(e.x, e.y, "health"); spawnPowerUp(e.x, e.y, "reflect"); }
+        return false;
       }
 
       const distToPlayer = Math.hypot(e.x-player.x, e.y-player.y);
@@ -1728,12 +1871,6 @@ function updateEnemies() {
       if (goldStar.alive && distToGoldStar < 30) {
         goldStar.health -= 15; createExplosion(e.x, e.y, "magenta");
         if (goldStar.health <= 0) { goldStar.alive = false; goldStar.respawnTimer = 0; createExplosion(goldStar.x, goldStar.y, "gold"); }
-      }
-
-      if (e.health <= 0) {
-        createExplosion(e.x, e.y, "purple");
-        if (!e.fromBoss) { score += 20; spawnPowerUp(e.x, e.y, "health"); spawnPowerUp(e.x, e.y, "reflect"); }
-        return false;
       }
 
       return true;
@@ -1752,6 +1889,8 @@ function updateLightning() {
     if (Math.hypot(l.x-player.x, l.y-player.y) < player.size/2) {
       if (player.reflectAvailable) {
         lightning.push({x: l.x, y: l.y, dx: -l.dx, dy: -l.dy, size: l.size || 6, damage: l.damage || 15});
+        // reflection visual
+        reflectionEffects.push({x: l.x, y: l.y, dx: -l.dx, dy: -l.dy, life: 18, maxLife: 18});
         player.reflectAvailable = false;
         createExplosion(player.x, player.y, "cyan");
         return false;
@@ -1764,6 +1903,7 @@ function updateLightning() {
     if (goldStar.alive && Math.hypot(l.x-goldStar.x, l.y-goldStar.y) < goldStar.size/2) {
       if (goldStar.reflectAvailable) {
         lightning.push({x: l.x, y: l.y, dx: -l.dx, dy: -l.dy, size: l.size || 6, damage: l.damage || 15});
+        reflectionEffects.push({x: l.x, y: l.y, dx: -l.dx, dy: -l.dy, life: 18, maxLife: 18});
         goldStar.reflectAvailable = false;
         createExplosion(goldStar.x, goldStar.y, "cyan");
         return false;
@@ -1786,6 +1926,8 @@ function checkBulletCollisions() {
         const dx = b.x-e.x, dy = b.y-e.y, dist = Math.hypot(dx,dy);
         if (dist < Math.max(e.width,e.height)) {
           lightning.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, size: 6, damage: 15});
+          // visual reflection effect
+          reflectionEffects.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, life: 22, maxLife: 22});
           bullets.splice(bi,1); e.health -= 5;
           if (e.health <= 0) { createExplosion(e.x, e.y, "purple"); enemies.splice(ei,1); if (!e.fromBoss) { score += 20; spawnPowerUp(e.x, e.y, "health"); spawnPowerUp(e.x, e.y, "reflect"); } }
           break;
@@ -2471,103 +2613,4 @@ function tryAdvanceWave() {
   }
 }
 
-function gameLoop() {
-  if (gameOver) return;
-
-  // Ensure canvas/context are present (in case something removed the element)
-  if (!canvas || !ctx) {
-    if (!ensureCanvas()) return;
-  }
-
-  frameCount++;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  drawGoldStarAura(ctx);
-
-  let newX = player.x, newY = player.y;
-  if (keys["w"]) newY -= player.speed; 
-  if (keys["s"]) newY += player.speed;
-  if (keys["a"]) newX -= player.speed; 
-  if (keys["d"]) newX += player.speed;
-  
-  let blocked = false;
-  for (const t of tunnels) {
-    if (newX+player.size/2 > t.x && newX-player.size/2 < t.x+t.width && newY+player.size/2 > t.y && newY-player.size/2 < t.y+t.height) {
-      blocked = true; 
-      if (!player.invulnerable) player.health -= 1; 
-      createExplosion(player.x, player.y, "cyan"); 
-      break;
-    }
-  }
-  if (!blocked) { player.x = newX; player.y = newY; }
-
-  handleShooting(); 
-  updateBullets(); 
-  updateEnemies(); 
-  updateLightning(); 
-  checkBulletCollisions();
-  updateExplosions(); 
-  updateTunnels(); 
-  updatePowerUps();
-
-  handlePowerUpCollections();
-
-  updateGoldStar(); 
-  updateGoldStarAura();
-  updateRedPunchEffects();
-
-  drawPlayer(); 
-  drawBullets(); 
-  drawEnemies(); 
-  drawDiamonds(); 
-  drawLightning(); 
-  drawExplosions();
-  drawTunnels(); 
-  drawPowerUps(); 
-  drawGoldStar(); 
-  drawRedPunchEffects(); 
-  drawUI(); 
-  tryAdvanceWave();
-
-  if (player.health <= 0) {
-    player.lives--;
-    if (player.lives > 0) { 
-      respawnPlayer(); 
-      requestAnimationFrame(gameLoop); 
-    } else {
-      gameOver = true;
-      saveHighScoreIfNeeded();
-      saveHighScoresOnGameOver(); // record top-5 with pilot name
-      // draw final screen
-      ctx.fillStyle = "white"; 
-      ctx.font = "50px Arial"; 
-      ctx.textAlign = "center";
-      ctx.fillText("GAME OVER", canvas.width/2, canvas.height/2 - 80);
-      ctx.font = "30px Arial";
-      ctx.fillText(`Final Score: ${score}`, canvas.width/2, canvas.height/2 - 30);
-      ctx.font = "20px Arial";
-      ctx.fillText(`Best: ${highScore}`, canvas.width/2, canvas.height/2 + 10);
-      ctx.fillText(`Press R to restart`, canvas.width/2, canvas.height/2 + 50);
-
-      // Draw scoreboard top 5 with names
-      ctx.font = "20px Arial";
-      ctx.textAlign = "left";
-      const boardX = canvas.width/2 - 220;
-      const boardY = canvas.height/2 + 90;
-      ctx.fillStyle = "rgba(0,0,0,0.6)";
-      ctx.fillRect(boardX - 12, boardY - 28, 440, 160);
-      ctx.fillStyle = "white";
-      ctx.font = "22px Arial";
-      ctx.fillText("Top 5 Scores", boardX, boardY);
-      ctx.font = "18px Arial";
-      ctx.fillStyle = "lightcyan";
-      for (let i = 0; i < 5; i++) {
-        const hi = highScores[i];
-        const text = hi ? `${i+1}. ${hi.name} - ${hi.score}` : `${i+1}. ---`;
-        ctx.fillText(text, boardX, boardY + 30 + i * 26);
-      }
-    }
-  } else {
-    requestAnimationFrame(gameLoop);
-  }
-}
+// update and draw reflection effects
