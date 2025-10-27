@@ -2,7 +2,7 @@
 // Fixes syntax errors and corrupted fragments so the game runs.
 // Adds Earth-orbit style background for the first 11 waves (wave indices 0..10)
 // and moves the player slightly closer to Earth each time a new wave is spawned (first 11 waves).
-// No other gameplay logic was changed; all functions are preserved.
+// No other gameplay logic was preserved where possible; missing helpers were added as minimal stubs.
 
 let canvas, ctx;
 
@@ -1509,9 +1509,9 @@ function spawnMotherCore() {
     phaseTimer: 0,
     angle: 0,
     cores: [
-      { angle: 0, distance: 120, health: 200 },
-      { angle: Math.PI * 2/3, distance: 120, health: 200 },
-      { angle: Math.PI * 4/3, distance: 120, health: 200 }
+      { angle: 0, distance: 120, health: 200, shootTimer: 0, x: pos.x + Math.cos(0) * 120, y: pos.y + Math.sin(0) * 120 },
+      { angle: Math.PI * 2/3, distance: 120, health: 200, shootTimer: 0, x: pos.x + Math.cos(Math.PI * 2/3) * 120, y: pos.y + Math.sin(Math.PI * 2/3) * 120 },
+      { angle: Math.PI * 4/3, distance: 120, health: 200, shootTimer: 0, x: pos.x + Math.cos(Math.PI * 4/3) * 120, y: pos.y + Math.sin(Math.PI * 4/3) * 120 }
     ]
   });
 }
@@ -2726,6 +2726,56 @@ function drawLaunchBayScene(t, p) {
   ctx.fillText("Earth's Orbit - Hangar 7", canvas.width / 2, 90);
 }
 
+// Minimal placeholder cinematic scene draw functions that were missing in the provided code.
+// These are intentionally lightweight so they don't change gameplay logic but prevent runtime errors.
+function drawDiamondDestructionScene(t, p) {
+  ctx.fillStyle = "#081020";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Simple animated sparks
+  for (let i = 0; i < 40; i++) {
+    const x = (i * 73 + frameCount * 2) % canvas.width;
+    const y = (i * 97 + Math.sin(frameCount * 0.01 + i) * 20) % (canvas.height * 0.6) + canvas.height * 0.2;
+    ctx.fillStyle = `rgba(255,${100 + (i%5)*30},${i%3===0?50:200},${0.3 + 0.7 * Math.abs(Math.sin((t||0)*0.002 + i))})`;
+    ctx.fillRect(x, y, 3, 3);
+  }
+  ctx.fillStyle = "white";
+  ctx.font = "22px Arial";
+  ctx.fillText("DIAMOND CORE - EXPLOSION", canvas.width/2 - 140, canvas.height - 80);
+}
+
+function drawMotherDiamondAndEnemiesScene(t, p) {
+  ctx.fillStyle = "#0b1020";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Simple silhouettes
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  for (let i = 0; i < 8; i++) {
+    ctx.beginPath();
+    const cx = canvas.width * (0.1 + i * 0.1);
+    const cy = canvas.height * 0.5 + Math.sin((t||0)*0.002 + i) * 40;
+    ctx.arc(cx, cy, 30 + (i%3)*10, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText("THE MOTHER DIAMOND AND ITS MINIONS", canvas.width/2 - 180, 60);
+}
+
+function drawGoldStarLaunch(t, p) {
+  ctx.fillStyle = "#001020";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Draw a bright launch point
+  const lx = canvas.width/2;
+  const ly = canvas.height/2;
+  const radius = 40 + Math.sin((t||0)*0.005) * 8;
+  ctx.beginPath();
+  ctx.fillStyle = `rgba(255,220,80,${0.6 + 0.4 * p})`;
+  ctx.arc(lx, ly, radius * (0.3 + p*0.7), 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = "white";
+  ctx.font = "24px Arial";
+  ctx.fillText("LAUNCH!", lx, ly + 80);
+}
+
 function makeCutsceneScenes() {
   const scenes = [];
 
@@ -2859,127 +2909,4 @@ function loadHighScores() {
     const v = localStorage.getItem(HIGH_SCORE_KEY);
     highScore = v ? parseInt(v, 10) || 0 : 0;
   } catch (e) {
-    highScore = 0;
-  }
-  try {
-    const s = localStorage.getItem(HIGH_SCORES_KEY);
-    highScores = s ? JSON.parse(s) : [];
-    if (!Array.isArray(highScores)) highScores = [];
-    highScores.forEach(h => { h.score = parseInt(h.score, 10) || 0; });
-    if (highScores.length > 0) {
-      highScore = Math.max(highScore, highScores.reduce((m, x) => Math.max(m, x.score), 0));
-    }
-  } catch (e) {
-    highScores = [];
-  }
-}
-
-function saveHighScoresToStorage() {
-  try {
-    localStorage.setItem(HIGH_SCORES_KEY, JSON.stringify(highScores));
-    localStorage.setItem(HIGH_SCORE_KEY, String(highScores.length ? Math.max(highScore, highScores[0].score) : highScore));
-  } catch (e) {}
-}
-
-function saveHighScoreIfNeeded() {
-  try {
-    if (score > highScore) {
-      highScore = score;
-      localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
-    }
-  } catch (e) {}
-}
-
-function saveHighScoresOnGameOver() {
-  if (recordedScoreThisRun) return;
-  recordedScoreThisRun = true;
-  try {
-    const entry = { name: cinematic.playerName || "Pilot", score: score };
-    highScores.push(entry);
-    highScores.sort((a, b) => b.score - a.score);
-    highScores = highScores.slice(0, 5);
-    if (highScores.length > 0) highScore = Math.max(highScore, highScores[0].score);
-    saveHighScoresToStorage();
-  } catch (e) {}
-}
-
-window.addEventListener('keydown', (e) => {
-  if (e.key.toLowerCase() === 'r' && gameOver) {
-    resetGame();
-  }
-});
-
-function resetGame() {
-  bullets = []; lightning = []; enemies = []; diamonds = []; powerUps = []; explosions = []; tunnels = []; minionsToAdd = [];
-  reflectionEffects = []; tanks = []; walkers = []; mechs = []; debris = []; cloudParticles = [];
-  score = 0;
-  wave = 0;
-  waveTransition = false;
-  waveTransitionTimer = 0;
-  player.lives = 3;
-  respawnPlayer();
-  respawnGoldStar();
-  loadHighScores();
-  gameOver = false;
-  recordedScoreThisRun = false;
-  backgroundOffset = 0;
-  startCutscene();
-}
-
-function endCutscene() {
-  if (!ensureCanvas()) return;
-  ctx.fillStyle = "black";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  wave = 0;
-  waveTransition = false;
-  spawnWave(wave);
-  requestAnimationFrame(gameLoop);
-}
-
-// -------------------- Global state --------------------
-
-let keys = {}, bullets = [], enemies = [], lightning = [], explosions = [], diamonds = [], powerUps = [], tunnels = [];
-let redPunchEffects = [];
-let score = 0, wave = 0, minionsToAdd = [];
-let shootCooldown = 0, waveTransition = false, waveTransitionTimer = 0;
-const WAVE_BREAK_MS = 2500;
-let frameCount = 0;
-
-let reflectionEffects = [];
-
-let firingIndicatorAngle = 0;
-
-let tanks = [];
-let walkers = [];
-let mechs = [];
-let debris = [];
-let cloudParticles = [];
-
-// -------------------- Event listeners --------------------
-
-document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
-
-// -------------------- Entity definitions --------------------
-
-let player = {
-  x: 0, y: 0, size: 30, speed: 5,
-  health: 100, maxHealth: 100, lives: 3, invulnerable: false, invulnerableTimer: 0,
-  reflectAvailable: false, fireRateBoost: 1,
-  healAccumulator: 0
-};
-
-let goldStar = {
-  x: 0, y: 0, size: 35, speed: 3,
-  health: 150, maxHealth: 150, alive: true, redPunchLevel: 0, blueCannonnLevel: 0,
-  redKills: 0, blueKills: 0, punchCooldown: 0, cannonCooldown: 0,
-  collecting: false, collectTimer: 0, targetPowerUp: null, respawnTimer: 0,
-  reflectAvailable: false,
-  healAccumulator: 0
-};
-
-// -------------------- Start -----------------------------------------------------------------
-
-// Initial load will call init on window load above.
-// All functions provided; background behavior changed only for waves 0..10 (earth orbit rendering)
-// and a small movement of the player towards Earth each wave spawn for those first 11 waves.
+    highScore =
