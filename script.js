@@ -4,7 +4,87 @@
 // and moves the player slightly closer to Earth each time a new wave is spawned (first 11 waves).
 // No other gameplay logic was preserved where possible; missing helpers were added as minimal stubs.
 
+// == Globals and initial state ==
 let canvas, ctx;
+
+let cloudParticles = [];
+let bullets = [];
+let enemies = [];
+let diamonds = [];
+let tunnels = [];
+let tanks = [];
+let walkers = [];
+let mechs = [];
+let debris = [];
+let explosions = [];
+let lightning = [];
+let powerUps = [];
+let reflectionEffects = [];
+let redPunchEffects = [];
+let minionsToAdd = [];
+
+let keys = {};
+let shootCooldown = 0;
+let frameCount = 0;
+let firingIndicatorAngle = 0;
+
+let score = 0;
+let wave = 0;
+let waveTransition = false;
+let waveTransitionTimer = 0;
+const WAVE_BREAK_MS = 3000;
+
+let highScore = 0;
+let highScores = [];
+
+let gameOver = false;
+let recordedScoreThisRun = false;
+
+let cinematic = {
+  playing: false,
+  playerName: "Pilot"
+};
+
+let player = {
+  x: 0,
+  y: 0,
+  size: 28,
+  speed: 4,
+  health: 100,
+  maxHealth: 100,
+  lives: 3,
+  invulnerable: false,
+  invulnerableTimer: 0,
+  reflectAvailable: false,
+  fireRateBoost: 1,
+  healAccumulator: 0
+};
+
+let goldStar = {
+  x: 0,
+  y: 0,
+  size: 36,
+  health: 200,
+  maxHealth: 200,
+  alive: true,
+  collecting: false,
+  collectTimer: 0,
+  speed: 2,
+  reflectAvailable: false,
+  redPunchLevel: 0,
+  blueCannonnLevel: 0,
+  redKills: 0,
+  blueKills: 0,
+  punchCooldown: 0,
+  cannonCooldown: 0,
+  respawnTimer: 0,
+  healAccumulator: 0,
+  targetPowerUp: null
+};
+
+const GOLD_STAR_PICKUP_FRAMES = 30;
+const PICKUP_RADIUS = 60;
+const MIN_SPAWN_DIST = 220;
 
 // -------------------- Drawing functions --------------------
 
@@ -1073,10 +1153,6 @@ function updateCloudParticles() {
 
 // -------------------- Gold Star & Aura --------------------
 
-const GOLD_STAR_PICKUP_FRAMES = 30;
-const PICKUP_RADIUS = 60;
-const MIN_SPAWN_DIST = 220;
-
 const goldStarAura = {
   baseRadius: 50,
   radius: 50,
@@ -1447,12 +1523,14 @@ function spawnDiamondEnemy() {
   });
 }
 
+// Modified spawners for ground-based units: spawn near bottom of screen
 function spawnTank(count) {
   for (let i = 0; i < count; i++) {
-    const pos = getSafeSpawnPosition();
+    const x = Math.random() * canvas.width;
+    const y = canvas.height - (30 + Math.random() * 60); // near bottom
     tanks.push({
-      x: pos.x,
-      y: pos.y,
+      x: x,
+      y: y,
       width: 50,
       height: 35,
       health: 150,
@@ -1465,10 +1543,11 @@ function spawnTank(count) {
 
 function spawnWalker(count) {
   for (let i = 0; i < count; i++) {
-    const pos = getSafeSpawnPosition();
+    const x = Math.random() * canvas.width;
+    const y = canvas.height - (40 + Math.random() * 80); // near bottom
     walkers.push({
-      x: pos.x,
-      y: pos.y,
+      x: x,
+      y: y,
       width: 40,
       height: 60,
       health: 200,
@@ -1481,10 +1560,11 @@ function spawnWalker(count) {
 
 function spawnMech(count) {
   for (let i = 0; i < count; i++) {
-    const pos = getSafeSpawnPosition();
+    const x = Math.random() * canvas.width;
+    const y = canvas.height - (50 + Math.random() * 100); // near bottom
     mechs.push({
-      x: pos.x,
-      y: pos.y,
+      x: x,
+      y: y,
       size: 80,
       health: 400,
       speed: 1.5,
@@ -1566,11 +1646,34 @@ function updateMiniBoss(boss) {
   }
 }
 
+// Minimal update for mother-core to avoid errors
+function updateMotherCore(e) {
+  e.angle = (e.angle || 0) + 0.005;
+  e.phaseTimer = (e.phaseTimer || 0) + 1;
+  for (let i = 0; i < e.cores.length; i++) {
+    const core = e.cores[i];
+    core.angle = (core.angle || 0) + 0.01 + i * 0.002;
+    const dist = core.distance || 120;
+    core.x = e.x + Math.cos(core.angle) * dist;
+    core.y = e.y + Math.sin(core.angle) * dist;
+    core.shootTimer = (core.shootTimer||0)+1;
+    if (core.shootTimer > 200) {
+      core.shootTimer = 0;
+      // shoot outward projectiles
+      for (let a = 0; a < 6; a++) {
+        const angle = a / 6 * Math.PI * 2;
+        lightning.push({x: core.x, y: core.y, dx: Math.cos(angle) * 5, dy: Math.sin(angle) * 5, size: 6, damage: 18});
+      }
+    }
+  }
+}
+
+// updateDiamond, updateTanks, updateWalkers, updateMechs (with ground-only movement constraints)
+
 function updateDiamond(d) {
-  // GRAVITON CORE ABILITY
+  // (unchanged from provided)
   d.gravitonTimer = (d.gravitonTimer || 0) + 1;
   
-  // Every 10 seconds (600 frames), activate graviton pull
   if (d.gravitonTimer >= 600 && !d.gravitonActive) {
     d.gravitonActive = true;
     d.gravitonCharge = 0;
@@ -1580,8 +1683,6 @@ function updateDiamond(d) {
 
   if (d.gravitonActive) {
     d.gravitonCharge++;
-    
-    // Pull phase (0-600 frames = 10 seconds)
     if (d.gravitonCharge < 600) {
       const pullRadius = 400;
       enemies.forEach(e => {
@@ -1595,14 +1696,11 @@ function updateDiamond(d) {
           e.x += (dx / dist) * pullStrength * 10;
           e.y += (dy / dist) * pullStrength * 10;
           
-          // Track pulled enemies
           if (!d.pulledEnemies.find(pe => pe === e)) {
             d.pulledEnemies.push(e);
           }
         }
       });
-      
-      // Visual pull effect
       if (d.gravitonCharge % 10 === 0) {
         for (let i = 0; i < 3; i++) {
           const angle = Math.random() * Math.PI * 2;
@@ -1618,17 +1716,11 @@ function updateDiamond(d) {
           });
         }
       }
-    }
-    
-    // Blast phase (at 600 frames)
-    else if (d.gravitonCharge === 600) {
-      // Release massive energy blast - shoot enemies outward
+    } else if (d.gravitonCharge === 600) {
       d.pulledEnemies.forEach(e => {
         const dx = e.x - d.x;
         const dy = e.y - d.y;
         const dist = Math.hypot(dx, dy) || 1;
-        
-        // Convert enemies to projectiles
         lightning.push({
           x: e.x,
           y: e.y,
@@ -1637,13 +1729,9 @@ function updateDiamond(d) {
           size: e.size || 8,
           damage: 30
         });
-        
-        // Remove enemy from game
         const idx = enemies.indexOf(e);
         if (idx !== -1) enemies.splice(idx, 1);
       });
-      
-      // Massive explosion visual
       for (let i = 0; i < 50; i++) {
         const angle = (i / 50) * Math.PI * 2;
         explosions.push({
@@ -1656,16 +1744,13 @@ function updateDiamond(d) {
           life: 30
         });
       }
-      
-      // Enter vulnerable state
       d.vulnerable = true;
-      d.vulnerableTimer = 360; // 6 seconds
+      d.vulnerableTimer = 360;
       d.gravitonActive = false;
       d.pulledEnemies = [];
     }
   }
   
-  // Vulnerable state countdown
   if (d.vulnerable) {
     d.vulnerableTimer--;
     if (d.vulnerableTimer <= 0) {
@@ -1771,18 +1856,24 @@ function updateDiamond(d) {
   }
 }
 
+// Tanks: modified so they behave as ground units and stay near bottom
 function updateTanks() {
+  const groundY = canvas.height - 30; // baseline ground y coordinate (center of tank)
   for (let i = tanks.length - 1; i >= 0; i--) {
     const tank = tanks[i];
     
-    const dx = player.x - tank.x;
-    const dy = player.y - tank.y;
-    const dist = Math.hypot(dx, dy) || 1;
-    
-    tank.x += (dx / dist) * tank.speed;
-    tank.y += (dy / dist) * tank.speed;
-    
-    tank.turretAngle = Math.atan2(dy, dx);
+    // Move primarily horizontally toward player's x, but remain on ground band
+    const targetX = player.x;
+    const dx = targetX - tank.x;
+    const distX = Math.abs(dx) || 1;
+    const moveX = Math.sign(dx) * Math.min(tank.speed * 1.2, distX);
+    tank.x += moveX;
+
+    // softly keep y near groundY
+    const desiredY = groundY - tank.height/2;
+    tank.y += (desiredY - tank.y) * 0.2;
+
+    tank.turretAngle = Math.atan2(player.y - tank.y, player.x - tank.x);
     
     tank.shootTimer = (tank.shootTimer || 0) + 1;
     if (tank.shootTimer > 120) {
@@ -1807,24 +1898,29 @@ function updateTanks() {
   }
 }
 
+// Walkers: ground-only movement; they can wobble vertically slightly but remain near ground
 function updateWalkers() {
+  const groundY = canvas.height - 40;
   for (let i = walkers.length - 1; i >= 0; i--) {
     const walker = walkers[i];
     
     const dx = player.x - walker.x;
-    const dy = player.y - walker.y;
-    const dist = Math.hypot(dx, dy) || 1;
+    const distX = Math.abs(dx) || 1;
     
-    walker.x += (dx / dist) * walker.speed;
-    walker.y += (dy / dist) * walker.speed;
-    
+    // Move horizontally towards player's x but constrained
+    walker.x += Math.sign(dx) * Math.min(walker.speed * 1.0, distX);
+
+    // small bobbing for legs but keep base near ground
     walker.legPhase = (walker.legPhase || 0) + 0.15;
+    const bob = Math.sin(walker.legPhase) * 4;
+    const desiredY = groundY + bob;
+    walker.y += (desiredY - walker.y) * 0.2;
     
     walker.shootTimer = (walker.shootTimer || 0) + 1;
     if (walker.shootTimer > 90) {
       walker.shootTimer = 0;
       for (let j = -1; j <= 1; j++) {
-        const angle = Math.atan2(dy, dx) + j * 0.2;
+        const angle = Math.atan2(player.y - walker.y, player.x - walker.x) + j * 0.2;
         lightning.push({
           x: walker.x,
           y: walker.y,
@@ -1846,16 +1942,18 @@ function updateWalkers() {
   }
 }
 
+// Mechs: also ground-based; can strafe but remain in bottom band
 function updateMechs() {
+  const groundY = canvas.height - 60;
   for (let i = mechs.length - 1; i >= 0; i--) {
     const mech = mechs[i];
     
     const dx = player.x - mech.x;
-    const dy = player.y - mech.y;
-    const dist = Math.hypot(dx, dy) || 1;
-    
-    mech.x += (dx / dist) * mech.speed;
-    mech.y += (dy / dist) * mech.speed;
+    const distX = Math.abs(dx) || 1;
+    mech.x += Math.sign(dx) * Math.min(mech.speed, distX);
+
+    // keep mech near baseline
+    mech.y += (groundY - mech.y) * 0.15;
     
     mech.shootTimer = (mech.shootTimer || 0) + 1;
     if (mech.shootTimer > 60) {
@@ -2529,6 +2627,19 @@ window.addEventListener('load', init);
 function init() {
   if (!ensureCanvas()) return;
 
+  // Basic input handling
+  window.addEventListener('keydown', e => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key === 'r' || e.key === 'R') {
+      if (gameOver) {
+        location.reload();
+      }
+    }
+  });
+  window.addEventListener('keyup', e => {
+    keys[e.key.toLowerCase()] = false;
+  });
+
   window.addEventListener('resize', () => {
     if (!ensureCanvas()) return;
     canvas.width = window.innerWidth;
@@ -2547,11 +2658,6 @@ function init() {
 }
 
 // -------------------- Cinematic system --------------------
-
-let cinematic = {
-  playing: false,
-  playerName: "Pilot"
-};
 
 function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal = 1) {
   const joined = lines.join("\n");
@@ -2734,179 +2840,4 @@ function drawDiamondDestructionScene(t, p) {
   // Simple animated sparks
   for (let i = 0; i < 40; i++) {
     const x = (i * 73 + frameCount * 2) % canvas.width;
-    const y = (i * 97 + Math.sin(frameCount * 0.01 + i) * 20) % (canvas.height * 0.6) + canvas.height * 0.2;
-    ctx.fillStyle = `rgba(255,${100 + (i%5)*30},${i%3===0?50:200},${0.3 + 0.7 * Math.abs(Math.sin((t||0)*0.002 + i))})`;
-    ctx.fillRect(x, y, 3, 3);
-  }
-  ctx.fillStyle = "white";
-  ctx.font = "22px Arial";
-  ctx.fillText("DIAMOND CORE - EXPLOSION", canvas.width/2 - 140, canvas.height - 80);
-}
-
-function drawMotherDiamondAndEnemiesScene(t, p) {
-  ctx.fillStyle = "#0b1020";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  // Simple silhouettes
-  ctx.fillStyle = "rgba(255,255,255,0.06)";
-  for (let i = 0; i < 8; i++) {
-    ctx.beginPath();
-    const cx = canvas.width * (0.1 + i * 0.1);
-    const cy = canvas.height * 0.5 + Math.sin((t||0)*0.002 + i) * 40;
-    ctx.arc(cx, cy, 30 + (i%3)*10, 0, Math.PI*2);
-    ctx.fill();
-  }
-  ctx.fillStyle = "white";
-  ctx.font = "20px Arial";
-  ctx.fillText("THE MOTHER DIAMOND AND ITS MINIONS", canvas.width/2 - 180, 60);
-}
-
-function drawGoldStarLaunch(t, p) {
-  ctx.fillStyle = "#001020";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  // Draw a bright launch point
-  const lx = canvas.width/2;
-  const ly = canvas.height/2;
-  const radius = 40 + Math.sin((t||0)*0.005) * 8;
-  ctx.beginPath();
-  ctx.fillStyle = `rgba(255,220,80,${0.6 + 0.4 * p})`;
-  ctx.arc(lx, ly, radius * (0.3 + p*0.7), 0, Math.PI*2);
-  ctx.fill();
-  ctx.fillStyle = "white";
-  ctx.font = "24px Arial";
-  ctx.fillText("LAUNCH!", lx, ly + 80);
-}
-
-function makeCutsceneScenes() {
-  const scenes = [];
-
-  scenes.push({
-    duration: 3500,
-    draw: (t, p) => { drawLaunchBayScene(t, p); }
-  });
-
-  scenes.push({
-    duration: 6500,
-    draw: (t, p) => { drawDiamondDestructionScene(t, p); }
-  });
-
-  scenes.push({
-    duration: 5500,
-    draw: (t, p) => { drawMotherDiamondAndEnemiesScene(t, p); }
-  });
-
-  scenes.push({
-    duration: 7000,
-    draw: (t, p) => {
-      drawGoldStarLaunch(t, p);
-      const reveal = Math.max(0, Math.min(1, p * 1.6));
-      drawTextBox([
-        'Pilot: "I\'m going!"',
-        'Commander: "Believe in the Gold Star!"'
-      ], 50, canvas.height - 140, 520, 24, "left", reveal);
-    }
-  });
-
-  scenes.push({
-    duration: 2500,
-    draw: (t, p) => {
-      const fadeOut = 1 - p;
-      ctx.fillStyle = `rgba(255,255,255,${fadeOut * 0.8})`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      if (p > 0.4) {
-        const countdown = Math.ceil(2.5 - (p * 2.5));
-        ctx.fillStyle = "white";
-        ctx.font = "48px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText("WAVE 1 STARTING IN", canvas.width / 2, canvas.height / 2 - 40);
-        ctx.font = "72px Arial";
-        ctx.fillStyle = countdown <= 1 ? "red" : "yellow";
-        ctx.fillText(countdown.toString(), canvas.width / 2, canvas.height / 2 + 40);
-        ctx.font = "32px Arial";
-        ctx.fillStyle = "cyan";
-        ctx.fillText("GET READY FOR BATTLE", canvas.width / 2, canvas.height / 2 + 100);
-      }
-    }
-  });
-
-  return scenes;
-}
-
-let cinematicScenes = [];
-let cinematicIndex = 0;
-let cinematicStartTime = 0;
-
-function startCutscene() {
-  const name = typeof prompt === 'function' ? (prompt("Enter your pilot name:", "Pilot") || "Pilot") : "Pilot";
-  cinematic.playerName = name;
-  cinematic.playing = true;
-  cinematicScenes = makeCutsceneScenes();
-  cinematicIndex = 0;
-  cinematicStartTime = performance.now();
-
-  if (!cinematicScenes || cinematicScenes.length === 0) {
-    cinematic.playing = false;
-    endCutscene();
-    return;
-  }
-
-  requestAnimationFrame(cinematicTick);
-}
-
-function cinematicTick(now) {
-  if (!cinematic.playing) return;
-
-  const scene = cinematicScenes[cinematicIndex];
-  if (!scene) {
-    cinematic.playing = false;
-    endCutscene();
-    return;
-  }
-
-  let elapsedBefore = 0;
-  for (let i = 0; i < cinematicIndex; i++) elapsedBefore += cinematicScenes[i].duration;
-  const sceneElapsed = now - (cinematicStartTime + elapsedBefore);
-  const progress = Math.max(0, Math.min(1, sceneElapsed / scene.duration));
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  scene.draw(now, progress);
-
-  ctx.fillStyle = "rgba(255,255,255,0.4)";
-  ctx.font = "14px Arial";
-  ctx.textAlign = "right";
-  ctx.fillText("Press ESC to skip intro", canvas.width - 20, 30);
-
-  if (sceneElapsed >= scene.duration) {
-    cinematicIndex++;
-    if (cinematicIndex >= cinematicScenes.length) {
-      cinematic.playing = false;
-      endCutscene();
-      return;
-    }
-  }
-
-  requestAnimationFrame(cinematicTick);
-}
-
-window.addEventListener("keydown", e => {
-  if (e.key === "Escape" && cinematic.playing) {
-    cinematic.playing = false;
-    endCutscene();
-  }
-});
-
-// -------------------- High score, restart, reset --------------------
-
-let gameOver = false;
-let highScore = 0;
-let highScores = [];
-let recordedScoreThisRun = false;
-const HIGH_SCORE_KEY = 'mybagman_game_highscore';
-const HIGH_SCORES_KEY = 'mybagman_game_highscores';
-
-function loadHighScores() {
-  try {
-    const v = localStorage.getItem(HIGH_SCORE_KEY);
-    highScore = v ? parseInt(v, 10) || 0 : 0;
-  } catch (e) {
-    highScore =
+    const y = (i * 97 + Math.sin(frameCount * 0.01 + i) * 20) % (canvas.height
