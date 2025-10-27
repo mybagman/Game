@@ -248,7 +248,7 @@ function drawEnemies() {
       ctx.shadowColor = "orange";
       ctx.fillStyle = "orange"; 
       ctx.beginPath(); 
-      ctx.arc(e.x, e.y, pulse, 0, Math.PI*2); 
+      ctx.arc(e.x, e.y, pulse, 0, Math.PI * 2); 
       ctx.fill();
       ctx.shadowBlur = 0;
     }
@@ -2835,9 +2835,16 @@ function drawLaunchBayScene(t, p) {
 // Minimal placeholder cinematic scene draw functions that were missing in the provided code.
 // These are intentionally lightweight so they don't change gameplay logic but prevent runtime errors.
 function drawDiamondDestructionScene(t, p) {
+  // t: seconds-ish, p: progress 0..1
   ctx.fillStyle = "#081020";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  // Simple animated sparks
-  for (let i = 0; i < 40; i++) {
-    const x = (i * 73 + frameCount * 2) % canvas.width;
-    const y = (i * 97 + Math.sin(frameCount * 0.01 + i) * 20) % (canvas.height
+
+  // center flash / diamond
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const flash = 1 - Math.abs(0.5 - (p % 1)) * 2;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = `rgba(255,220,180,${0.35 + 0.65 * flash})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 60 + flash * 120, 0, Math.PI * 
