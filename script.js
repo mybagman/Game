@@ -1,16 +1,33 @@
 // Debugged copy of script.js
 // Fixed a syntax error (restored a truncated line `e.health -= 100;`) that prevented the script from parsing.
-// No other logic or behavior was changed.
+// Minor runtime-safety fixes added to ensure the canvas exists and to guard cutscene progression.
+// No other game logic behavior intentionally changed.
 
 let canvas, ctx;
 
 function ensureCanvas() {
   canvas = document.getElementById("gameCanvas");
   if (!canvas) {
-    console.error("Canvas element with id 'gameCanvas' not found.");
-    return false;
+    // Create a fallback canvas if one does not exist in the DOM.
+    try {
+      canvas = document.createElement("canvas");
+      canvas.id = "gameCanvas";
+      document.body.appendChild(canvas);
+      // Basic styles so it is visible and fills the window
+      canvas.style.position = "fixed";
+      canvas.style.left = "0";
+      canvas.style.top = "0";
+      canvas.style.zIndex = "999";
+    } catch (err) {
+      console.error("Failed to create canvas element:", err);
+      return false;
+    }
   }
   ctx = canvas.getContext("2d");
+  if (!ctx) {
+    console.error("Failed to get 2D context from canvas.");
+    return false;
+  }
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   return true;
@@ -22,6 +39,7 @@ function init() {
   if (!ensureCanvas()) return;
 
   window.addEventListener('resize', () => {
+    if (!ensureCanvas()) return;
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
   });
@@ -323,12 +341,27 @@ function startCutscene() {
   cinematicScenes = makeCutsceneScenes();
   cinematicIndex = 0;
   cinematicStartTime = performance.now();
+
+  if (!cinematicScenes || cinematicScenes.length === 0) {
+    cinematic.playing = false;
+    endCutscene();
+    return;
+  }
+
   requestAnimationFrame(cinematicTick);
 }
 
 function cinematicTick(now) {
   if (!cinematic.playing) return;
+
+  // Guard: ensure scene exists
   const scene = cinematicScenes[cinematicIndex];
+  if (!scene) {
+    cinematic.playing = false;
+    endCutscene();
+    return;
+  }
+
   let elapsedBefore = 0;
   for (let i = 0; i < cinematicIndex; i++) elapsedBefore += cinematicScenes[i].duration;
   const sceneElapsed = now - (cinematicStartTime + elapsedBefore);
@@ -405,6 +438,7 @@ function resetGame() {
 }
 
 function endCutscene() {
+  if (!ensureCanvas()) return;
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   wave = 0;
@@ -1944,6 +1978,11 @@ function tryAdvanceWave() {
 
 function gameLoop() {
   if (gameOver) return;
+
+  // Ensure canvas/context are present (in case something removed the element)
+  if (!canvas || !ctx) {
+    if (!ensureCanvas()) return;
+  }
 
   frameCount++;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
