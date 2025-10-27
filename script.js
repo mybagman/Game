@@ -59,18 +59,87 @@ let cinematic = {
   playerName: "Pilot"
 };
 
-function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left") {
-  ctx.save();
-  ctx.font = "20px Arial";
-  ctx.fillStyle = "rgba(0,0,0,0.8)";
-  const padding = 12;
-  const h = lines.length * lineHeight + padding*2;
-  ctx.fillRect(x, y - padding, maxW, h);
-  ctx.fillStyle = "white";
-  ctx.textAlign = align;
+// Typing renderer for cinematic text: reveal (0..1)
+function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal = 1) {
+  // Combine lines including newlines to compute total characters to reveal
+  const joined = lines.join("\n");
+  const totalChars = joined.length;
+  const revealChars = Math.floor(totalChars * Math.max(0, Math.min(1, reveal)));
+
+  // Build visible lines up to revealChars
+  let remaining = revealChars;
+  const visibleLines = [];
   for (let i = 0; i < lines.length; i++) {
-    ctx.fillText(lines[i], x + 12, y + (i+1)*lineHeight);
+    const line = lines[i];
+    if (remaining >= line.length) {
+      visibleLines.push(line);
+      remaining -= line.length;
+    } else if (remaining > 0) {
+      visibleLines.push(line.slice(0, remaining));
+      remaining = 0;
+    } else {
+      visibleLines.push("");
+    }
   }
+
+  // Cursor / caret blinking
+  const showCursor = revealChars < totalChars && (Math.floor(Date.now() / 400) % 2 === 0);
+
+  ctx.save();
+  // Futuristic CPU style textbox
+  ctx.font = "18px 'Courier New', monospace";
+  const padding = 14;
+  const h = visibleLines.length * lineHeight + padding*2;
+  // Slight translucent panel with subtle outline
+  ctx.fillStyle = "rgba(5,10,15,0.88)";
+  ctx.fillRect(x, y - padding, maxW, h);
+  // Outer glow border
+  ctx.strokeStyle = "rgba(40,200,255,0.12)";
+  ctx.lineWidth = 2;
+  roundRect(ctx, x + 0.5, y - padding + 0.5, maxW - 1, h - 1, 8);
+  ctx.stroke();
+
+  // Typing color and glow
+  ctx.fillStyle = "rgba(140,240,255,0.95)";
+  ctx.textAlign = align;
+  ctx.shadowColor = "rgba(0,200,255,0.25)";
+  ctx.shadowBlur = 8;
+
+  // Render each visible line; if a line is partially revealed we add a cursor after it
+  let drawX = x + 12;
+  if (align === "center") drawX = x + maxW / 2;
+  else if (align === "right") drawX = x + maxW - 12;
+
+  for (let i = 0; i < visibleLines.length; i++) {
+    const line = visibleLines[i];
+    ctx.fillText(line, drawX, y + (i+1)*lineHeight);
+  }
+
+  // If typing is mid-line, draw a small cursor after the last visible character
+  if (showCursor) {
+    // find last non-empty rendered line index (prefer last line)
+    let li = visibleLines.length - 1;
+    while (li >= 0 && visibleLines[li] === "") li--;
+    if (li >= 0) {
+      const textBefore = visibleLines[li];
+      // measure width using same font
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "rgba(140,240,255,0.95)";
+      const metrics = ctx.measureText(textBefore);
+      let cursorX = drawX + metrics.width;
+      if (align === "center") cursorX = drawX - metrics.width/2 + metrics.width;
+      else if (align === "right") cursorX = drawX - metrics.width;
+      const cursorY = y + (li+1)*lineHeight - 14;
+      // block cursor
+      ctx.fillRect(cursorX + 2, cursorY, 8, 14);
+    } else {
+      // No chars yet: draw cursor at start of box
+      const cursorX = x + 18;
+      const cursorY = y + lineHeight - 14;
+      ctx.fillRect(cursorX, cursorY, 8, 14);
+    }
+  }
+
   ctx.restore();
 }
 
@@ -302,13 +371,14 @@ function drawDiamondDestructionScene(t, p) {
     }
   }
 
-  // overlay text
+  // overlay text - use typing effect reveal based on p
   if (p > 0.15) {
+    const reveal = Math.max(0, Math.min(1, (p - 0.15) / (1 - 0.15)));
     drawTextBox([
       'Commander: "The Mother Diamond has been',
       'destroying all the Green Squares on Earth.',
       'We\'re the last ones left."'
-    ], 50, canvas.height - 170, canvas.width - 100);
+    ], 50, canvas.height - 170, canvas.width - 100, 26, "left", reveal);
   }
 }
 
@@ -378,12 +448,13 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
     }
   }
 
-  // caption
+  // caption - use typing reveal based on p
+  const reveal = Math.max(0, Math.min(1, p));
   drawTextBox([
     `Commander: "${cinematic.playerName || "Pilot"}, you must reach the`,
     'Mother Diamond and destroy it.',
     'Then we can take back Earth."'
-  ], 50, canvas.height - 170, canvas.width - 100);
+  ], 50, canvas.height - 170, canvas.width - 100, 26, "left", reveal);
 }
 
 function drawGoldStarLaunch(t, p) {
@@ -457,6 +528,7 @@ function drawGoldStarLaunch(t, p) {
   }
 }
 
+// Create cutscene scenes with typing and increased display time for the "Believe in the Gold Star!" script
 function makeCutsceneScenes() {
   const scenes = [];
 
@@ -483,17 +555,19 @@ function makeCutsceneScenes() {
     }
   });
 
+  // Scene 4: Gold Star launching + dialog (increased duration so final "Believe..." remains visible longer)
   scenes.push({
-    duration: 3500,
+    duration: 6000,
     draw: (t, p) => {
       drawGoldStarLaunch(t, p);
       
-      if (p < 0.3) {
-        drawTextBox([
-          'Pilot: "I\'m going!"',
-          'Commander: "Believe in the Gold Star!"'
-        ], 50, canvas.height - 140, 520);
-      }
+      // Show dialog typed in realtime using reveal = p (so it types across the scene)
+      // Slightly bias reveal so dialog completes earlier than full scene end for readability
+      const reveal = Math.max(0, Math.min(1, p * 1.15));
+      drawTextBox([
+        'Pilot: "I\'m going!"',
+        'Commander: "Believe in the Gold Star!"'
+      ], 50, canvas.height - 140, 520, 24, "left", reveal);
     }
   });
 
@@ -698,7 +772,8 @@ function getAuraSparkColor() {
 }
 
 function updateAuraStats() {
-  goldStarAura.radius = goldStarAura.baseRadius * (1 + 0.02 * goldStarAura.level);
+  // Increase aura size by 5% every level
+  goldStarAura.radius = goldStarAura.baseRadius * (1 + 0.05 * goldStarAura.level);
 
   if (goldStar.alive) {
     const dx = player.x - goldStar.x;
@@ -829,22 +904,31 @@ function applyGoldStarAuraEffects() {
   const dist = Math.sqrt(dx*dx + dy*dy);
 
   if (dist < goldStarAura.radius) {
-    // NEW BEHAVIOR: if gold star is not full, being in the aura causes the player to heal the gold star
+    // HEAL BEHAVIOR: base 1hp/sec, increases with aura level
+    // Implement accumulator so fractional heal rates are supported
+    const healPerSecondStar = 1 + goldStarAura.level * 0.5; // base 1 hp/sec, +0.5 per level
+    goldStar.healAccumulator = goldStar.healAccumulator || 0;
+    goldStar.healAccumulator += healPerSecondStar / 60;
     if (goldStar.health < goldStar.maxHealth) {
-      // Heal the gold star over time while the player is in the aura.
-      // This represents the player recharging / channeling the gold star.
-      if (frameCount % 30 === 0) {
-        goldStar.health = Math.min(goldStar.maxHealth, goldStar.health + 2);
-        // small visual hint: spawn a light explosion at goldStar
+      const toHeal = Math.floor(goldStar.healAccumulator);
+      if (toHeal > 0) {
+        goldStar.health = Math.min(goldStar.maxHealth, goldStar.health + toHeal);
+        goldStar.healAccumulator -= toHeal;
+        // visual hint
         createExplosion(goldStar.x + (Math.random()-0.5)*8, goldStar.y + (Math.random()-0.5)*8, "magenta");
       }
       player.fireRateBoost = 1 + goldStarAura.level * 0.15;
     } else {
-      // gold star is full -> aura heals the player (previous behavior)
-      player.fireRateBoost = 1 + goldStarAura.level * 0.15;
-      if (frameCount % Math.max(90 - goldStarAura.level * 10, 30) === 0) {
-        player.health = Math.min(player.maxHealth, player.health + 1);
+      // gold star is full -> aura heals the player
+      const healPerSecondPlayer = 1 + goldStarAura.level * 0.5;
+      player.healAccumulator = player.healAccumulator || 0;
+      player.healAccumulator += healPerSecondPlayer / 60;
+      const toHealP = Math.floor(player.healAccumulator);
+      if (toHealP > 0) {
+        player.health = Math.min(player.maxHealth, player.health + toHealP);
+        player.healAccumulator -= toHealP;
       }
+      player.fireRateBoost = 1 + goldStarAura.level * 0.15;
     }
   } else {
     player.fireRateBoost = 1;
@@ -860,7 +944,8 @@ function applyGoldStarAuraEffects() {
     const bx = l.x - goldStar.x;
     const by = l.y - goldStar.y;
     const bd = Math.sqrt(bx*bx + by*by);
-    const bulletSlowRadius = goldStarAura.radius * 1.25;
+    // Increase bullet slow radius relative to aura radius
+    const bulletSlowRadius = goldStarAura.radius * 1.5;
     if (bd < bulletSlowRadius) {
       const slowFactor = Math.max(0.5, 1 - 0.08 * goldStarAura.level);
       l.dx = l._origDx * slowFactor;
@@ -899,7 +984,8 @@ function drawGoldStarAura(ctx) {
 let player = {
   x: 0, y: 0, size: 30, speed: 5,
   health: 100, maxHealth: 100, lives: 3, invulnerable: false, invulnerableTimer: 0,
-  reflectAvailable: false, fireRateBoost: 1
+  reflectAvailable: false, fireRateBoost: 1,
+  healAccumulator: 0
 };
 
 let goldStar = {
@@ -907,7 +993,8 @@ let goldStar = {
   health: 150, maxHealth: 150, alive: true, redPunchLevel: 0, blueCannonnLevel: 0,
   redKills: 0, blueKills: 0, punchCooldown: 0, cannonCooldown: 0,
   collecting: false, collectTimer: 0, targetPowerUp: null, respawnTimer: 0,
-  reflectAvailable: false
+  reflectAvailable: false,
+  healAccumulator: 0
 };
 
 document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
@@ -928,6 +1015,7 @@ function respawnGoldStar() {
   goldStar.punchCooldown = 0;
   goldStar.cannonCooldown = 0;
   goldStar.reflectAvailable = false;
+  goldStar.healAccumulator = 0;
 }
 
 function respawnPlayer() {
@@ -936,6 +1024,7 @@ function respawnPlayer() {
   player.y = canvas.height/2;
   player.invulnerable = true;
   player.invulnerableTimer = 120;
+  player.healAccumulator = 0;
 }
 
 function spawnRedSquares(c, fromBoss = false) {
@@ -1619,7 +1708,8 @@ function drawPlayer() {
   ctx.fillRect(player.x-player.size/2, player.y-player.size/2, player.size, player.size);
 
   // Draw firing indicator dot that moves around the square
-  if (shootCooldown > 0 || (keys["arrowup"] || keys["arrowdown"] || keys["arrowleft"] || keys["arrowright"])) {
+  // Only show the spinning indicator when shooting AND when inside gold star aura
+  if (goldStarAura.active && (shootCooldown > 0 || (keys["arrowup"] || keys["arrowdown"] || keys["arrowleft"] || keys["arrowright"]))) {
     const indicatorDistance = player.size / 2 + 8;
     const dotX = player.x + Math.cos(firingIndicatorAngle) * indicatorDistance;
     const dotY = player.y + Math.sin(firingIndicatorAngle) * indicatorDistance;
