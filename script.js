@@ -261,8 +261,9 @@ function drawLaunchBayScene(t, p) {
     ctx.save();
     // glow and scanner effect
     ctx.shadowBlur = 18 * eyeAppear;
-    ctx.shadowColor = "rgba(255,40,40,0.9)";
-    ctx.fillStyle = `rgba(255,60,60,${0.6 + eyeAppear * 0.4})`;
+    // Changed scanning eye colour to yellow (no pupil)
+    ctx.shadowColor = "rgba(255,220,80,0.9)";
+    ctx.fillStyle = `rgba(255,220,80,${0.6 + eyeAppear * 0.4})`;
     ctx.beginPath();
     ctx.arc(eyeX, eyeY, 8 + 4 * eyeAppear, 0, Math.PI * 2);
     ctx.fill();
@@ -271,7 +272,7 @@ function drawLaunchBayScene(t, p) {
     // small scanning beam when fully active
     if (eyeProgress > 0.6) {
       ctx.globalAlpha = Math.min(0.6, (eyeProgress - 0.6) / 0.4 * 0.6);
-      ctx.fillStyle = "rgba(255,40,40,0.12)";
+      ctx.fillStyle = "rgba(255,220,80,0.12)";
       ctx.fillRect(squareX, eyeY - 2, squareSize * (0.4 + 0.6 * Math.sin(Date.now()*0.004)), 4);
       ctx.globalAlpha = 1;
     }
@@ -289,47 +290,6 @@ function drawLaunchBayScene(t, p) {
 }
 
 function drawEnemyScene(t, p) {
-  ctx.fillStyle = "#05000a";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  for (let i = 0; i < 150; i++) {
-    const x = (i * 171) % canvas.width;
-    const y = (i * 293) % canvas.height;
-    const brightness = 0.3 + Math.sin(t * 0.001 + i) * 0.3;
-    ctx.fillStyle = `rgba(255,100,100,${brightness})`;
-    ctx.fillRect(x, y, 1, 1);
-  }
-  
-  ctx.save();
-  ctx.translate(canvas.width * 0.5, canvas.height * 0.35);
-  const pulse = Math.sin(t * 0.003) * 20;
-  ctx.rotate(t * 0.0005);
-  
-  ctx.strokeStyle = `rgba(255,50,50,${0.6 + Math.sin(t * 0.002) * 0.3})`;
-  ctx.lineWidth = 4;
-  ctx.shadowBlur = 40;
-  ctx.shadowColor = "red";
-  
-  const dSize = 150 + pulse;
-  ctx.beginPath();
-  ctx.moveTo(0, -dSize);
-  ctx.lineTo(dSize, 0);
-  ctx.lineTo(0, dSize);
-  ctx.lineTo(-dSize, 0);
-  ctx.closePath();
-  ctx.stroke();
-  ctx.restore();
-  
-  for (let i = 0; i < 5; i++) {
-    const xOffset = Math.sin(t * 0.001 + i) * 100;
-    const yPos = canvas.height * 0.6 + i * 40;
-    const size = 25 + Math.sin(t * 0.002 + i) * 5;
-    
-    ctx.fillStyle = `rgba(255,0,0,${0.6 + Math.sin(t * 0.002 + i) * 0.3})`;
-    ctx.fillRect(canvas.width * 0.3 + xOffset + i * 80, yPos, size, size);
-  }
-  
-  function drawEnemyScene(t, p) {
   ctx.fillStyle = "#05000a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   
@@ -382,21 +342,6 @@ function drawEnemyScene(t, p) {
     }
   }
   
-  for (let i = 0; i < 4; i++) {
-    const xOffset = Math.cos(t * 0.0015 + i) * 120;
-    const yPos = canvas.height * 0.7 + i * 35;
-    const size = 30;
-    
-    ctx.fillStyle = `rgba(0,255,255,${0.5 + Math.cos(t * 0.002 + i) * 0.3})`;
-    ctx.beginPath();
-    ctx.moveTo(canvas.width * 0.6 + xOffset + i * 70, yPos - size/2);
-    ctx.lineTo(canvas.width * 0.6 + xOffset + i * 70 - size/2, yPos + size/2);
-    ctx.lineTo(canvas.width * 0.6 + xOffset + i * 70 + size/2, yPos + size/2);
-    ctx.closePath();
-    ctx.fill();
-  }
-}
-
   for (let i = 0; i < 4; i++) {
     const xOffset = Math.cos(t * 0.0015 + i) * 120;
     const yPos = canvas.height * 0.7 + i * 35;
@@ -1375,6 +1320,24 @@ function handleShooting() {
   }
 }
 
+// --- Added: basic player movement (WASD) to fix "cannot move" issue.
+// We keep arrow keys for shooting as before; movement is handled with W/A/S/D.
+function updatePlayerMovement() {
+  let mx = 0, my = 0;
+  if (keys["w"]) my = -1;
+  if (keys["s"]) my = 1;
+  if (keys["a"]) mx = -1;
+  if (keys["d"]) mx = 1;
+  const mag = Math.hypot(mx, my) || 0;
+  if (mag > 0) {
+    player.x += (mx / mag) * player.speed;
+    player.y += (my / mag) * player.speed;
+    // clamp to canvas
+    player.x = Math.max(player.size/2, Math.min(canvas.width - player.size/2, player.x));
+    player.y = Math.max(player.size/2, Math.min(canvas.height - player.size/2, player.y));
+  }
+}
+
 function updateBullets() {
   bullets = bullets.filter(b => {
     b.x += b.dx; b.y += b.dy;
@@ -1849,8 +1812,8 @@ function updateEnemies() {
           reflectionEffects.push({x: b.x, y: b.y, dx: -b.dx, dy: -b.dy, life: 24, maxLife: 24});
           bullets.splice(bi,1);
           e.health -= 5;
-          if (e.health <= 0) { createExplosion(e.x, e.y, "purple"); enemies.splice(ei,1); if (!e.fromBoss) { score += 20; spawnPowerUp(e.x, e.y, "health"); spawnPowerUp(e.x, e.y, "reflect"); } }
-          // NOTE: ei is not in scope here; we'll avoid removing by index calculation below
+          // removed direct splice by index (ei was out of scope) to avoid runtime errors;
+          // dead reflectors will be removed after this loop via the health check below.
         }
       }
 
@@ -2630,6 +2593,7 @@ function gameLoop(now) {
   frameCount++;
 
   // updates
+  updatePlayerMovement(); // <-- ensure player can move (WASD)
   handleShooting();
   updateBullets();
   updateLightning();
