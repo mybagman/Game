@@ -2731,6 +2731,9 @@ function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal 
 
 // A subset of cinematic draw functions (kept as in original repo)
 function drawLaunchBayScene(t, p) {
+  // Ensure local fallbacks and compute layout variables to avoid ReferenceError
+  const disconnectProgress = typeof p === 'number' ? p : 0;
+
   ctx.fillStyle = "#000814";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   for (let i = 0; i < 140; i++) {
@@ -2755,6 +2758,12 @@ function drawLaunchBayScene(t, p) {
     const gy = canvas.height * 0.6 + j * 20;
     ctx.beginPath(); ctx.moveTo(hangarX, gy); ctx.lineTo(hangarX + hangarW, gy); ctx.stroke();
   }
+
+  // Square / UI element shown in hangar: compute sensible defaults
+  const squareSize = Math.min(canvas.width, canvas.height) * 0.06;
+  const squareX = hangarX + (hangarW - squareSize) * 0.5;
+  const squareY = hangarY + (hangarH - squareSize) * 0.5;
+
   ctx.shadowBlur = 30 * (1 - disconnectProgress * 0.6);
   ctx.shadowColor = "lime";
   ctx.fillStyle = "lime";
