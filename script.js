@@ -44,7 +44,7 @@ function init() {
   goldStar.x = canvas.width / 4;
   goldStar.y = canvas.height / 2;
 
-  loadHighScore();
+  loadHighScores(); // loads best and top list
 
   wave = 0; waveTransition = false; waveTransitionTimer = 0;
   startCutscene();
@@ -82,8 +82,8 @@ function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal 
     }
   }
 
-  // Cursor / caret blinking
-  const showCursor = revealChars < totalChars && (Math.floor(Date.now() / 400) % 2 === 0);
+  // Cursor / caret blinking (sped up for snappier typing)
+  const showCursor = revealChars < totalChars && (Math.floor(Date.now() / 200) % 2 === 0);
 
   ctx.save();
   // Futuristic CPU style textbox
@@ -143,51 +143,120 @@ function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal 
   ctx.restore();
 }
 
-function drawLaunchBayScene() {
+// Improved launch bay with hoses that disconnect as p -> 1
+function drawLaunchBayScene(t, p) {
+  // p is scene progress 0..1
   ctx.fillStyle = "#000814";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   
-  for (let i = 0; i < 100; i++) {
+  // Starfield / hangar atmosphere
+  for (let i = 0; i < 140; i++) {
     const x = (i * 137) % canvas.width;
     const y = (i * 241) % canvas.height;
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    const alpha = 0.25 + Math.abs(Math.sin((t||0) * 0.001 + i)) * 0.4;
+    ctx.fillStyle = `rgba(255,255,255,${0.12 * alpha})`;
     ctx.fillRect(x, y, 2, 2);
   }
-  
-  ctx.fillStyle = "#1a2332";
-  ctx.fillRect(canvas.width * 0.2, canvas.height * 0.3, canvas.width * 0.6, canvas.height * 0.5);
-  
-  ctx.fillStyle = "#0d1520";
-  ctx.fillRect(canvas.width * 0.25, canvas.height * 0.35, canvas.width * 0.5, canvas.height * 0.4);
-  
-  ctx.strokeStyle = "#2a4055";
+
+  // Hangar interior: big panel with gradient
+  const hangarX = canvas.width * 0.15, hangarW = canvas.width * 0.7;
+  const hangarY = canvas.height * 0.28, hangarH = canvas.height * 0.52;
+  // subtle gradient
+  const g = ctx.createLinearGradient(hangarX, hangarY, hangarX, hangarY+hangarH);
+  g.addColorStop(0, "#0f1721");
+  g.addColorStop(1, "#121827");
+  ctx.fillStyle = g;
+  ctx.fillRect(hangarX, hangarY, hangarW, hangarH);
+
+  // Panels and beams
+  ctx.strokeStyle = "#1e2b3a";
   ctx.lineWidth = 2;
-  for (let i = 0; i < 10; i++) {
-    const x = canvas.width * 0.25 + (canvas.width * 0.5 / 10) * i;
+  for (let i = 0; i < 12; i++) {
+    const x = hangarX + (hangarW / 12) * i;
     ctx.beginPath();
-    ctx.moveTo(x, canvas.height * 0.35);
-    ctx.lineTo(x, canvas.height * 0.75);
+    ctx.moveTo(x, hangarY);
+    ctx.lineTo(x, hangarY + hangarH);
     ctx.stroke();
   }
-  
+
+  // Ground grid subtle
+  ctx.strokeStyle = "rgba(50,80,100,0.08)";
+  ctx.lineWidth = 1;
+  for (let j = 0; j < 10; j++) {
+    const gy = canvas.height * 0.6 + j * 20;
+    ctx.beginPath();
+    ctx.moveTo(hangarX, gy);
+    ctx.lineTo(hangarX + hangarW, gy);
+    ctx.stroke();
+  }
+
+  // Central Green Square (launching unit)
   const squareSize = 60;
   const squareX = canvas.width / 2 - squareSize / 2;
   const squareY = canvas.height / 2 - squareSize / 2;
-  
-  ctx.shadowBlur = 30;
+
+  // Add hoses connecting left/right anchors to square; they detach as p increases
+  const leftAnchor = { x: hangarX + 40, y: squareY + squareSize / 2 - 6 };
+  const rightAnchor = { x: hangarX + hangarW - 40, y: squareY + squareSize / 2 - 6 };
+  const disconnectProgress = Math.max(0, Math.min(1, p * 1.6)); // hoses detach earlier
+  const hoseFade = 1 - disconnectProgress;
+  const hoseRetract = disconnectProgress * 60; // how much they retract towards anchors
+
+  function drawHose(from, to, seed) {
+    ctx.save();
+    ctx.lineWidth = 8;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = `rgba(40,200,120,${0.95 * hoseFade})`;
+    ctx.beginPath();
+    const ctrlX = (from.x + to.x) / 2 + Math.sin((t||0)*0.002 + seed) * 30 * (1 - disconnectProgress);
+    const ctrlY = (from.y + to.y) / 2 + Math.cos((t||0)*0.002 + seed) * 10 * (1 - disconnectProgress);
+    // retract end toward anchor as it disconnects
+    const targetX = to.x + (from.x - to.x) * (hoseRetract / 120);
+    const targetY = to.y + (from.y - to.y) * (hoseRetract / 120);
+    ctx.moveTo(from.x, from.y);
+    ctx.quadraticCurveTo(ctrlX, ctrlY, targetX, targetY);
+    ctx.stroke();
+
+    // little clamp at near-square end which fades/flies off
+    const clampProgress = Math.min(1, disconnectProgress * 1.6);
+    ctx.fillStyle = `rgba(80,240,180,${0.9 * hoseFade})`;
+    const clampX = targetX + (Math.random() - 0.5) * 2;
+    const clampY = targetY - clampProgress * 40;
+    ctx.beginPath();
+    ctx.arc(clampX, clampY, 6 * (1 - clampProgress * 0.8), 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // draw two hoses from left and right
+  drawHose({ x: squareX + 8, y: squareY + squareSize/2 }, leftAnchor, 1);
+  drawHose({ x: squareX + squareSize - 8, y: squareY + squareSize/2 }, rightAnchor, 2);
+
+  // Sparks and small cable bits when nearly disconnected
+  if (disconnectProgress > 0.6) {
+    for (let i = 0; i < 6; i++) {
+      const bx = squareX + (Math.random() - 0.5) * squareSize * 1.2;
+      const by = squareY + (Math.random() - 0.5) * squareSize * 1.2;
+      ctx.fillStyle = `rgba(160,255,200,${Math.random() * 0.6})`;
+      ctx.fillRect(bx, by, 3, 3);
+    }
+  }
+
+  // green square glow
+  ctx.shadowBlur = 30 * (1 - disconnectProgress * 0.6);
   ctx.shadowColor = "lime";
   ctx.fillStyle = "lime";
   ctx.fillRect(squareX, squareY, squareSize, squareSize);
   ctx.shadowBlur = 0;
-  
-  // Add Year 2050 and location text
+
+  // Add Year 2050 and location text (slightly dimmer)
   ctx.fillStyle = "rgba(255,255,255,0.8)";
   ctx.font = "24px Arial";
   ctx.textAlign = "center";
   ctx.fillText("YEAR 2050", canvas.width / 2, 60);
   ctx.font = "18px Arial";
   ctx.fillStyle = "rgba(200,220,255,0.7)";
-  ctx.fillText("Earth's Orbit", canvas.width / 2, 90);
+  ctx.fillText("Earth's Orbit - Hangar 7", canvas.width / 2, 90);
 }
 
 function drawEnemyScene(t, p) {
@@ -324,7 +393,7 @@ function drawDiamondDestructionScene(t, p) {
   for (let i = 0; i < 120; i++) {
     const x = (i * 97) % canvas.width;
     const y = (i * 199) % canvas.height;
-    ctx.fillStyle = `rgba(180,255,200,${0.15 + Math.abs(Math.sin(t*0.001 + i))*0.4})`;
+    ctx.fillStyle = `rgba(180,255,200,${0.15 + Math.abs(Math.sin((t||0)*0.001 + i))*0.4})`;
     ctx.fillRect(x, y, 1, 1);
   }
 
@@ -333,8 +402,8 @@ function drawDiamondDestructionScene(t, p) {
   const centerY = canvas.height * 0.45;
   ctx.save();
   ctx.translate(centerX, centerY);
-  const s = 220 + Math.sin(t*0.001)*8 + p*60;
-  ctx.rotate(t*0.0002);
+  const s = 220 + Math.sin((t||0)*0.001)*8 + p*60;
+  ctx.rotate((t||0)*0.0002);
   ctx.shadowBlur = 50;
   ctx.shadowColor = "rgba(0,200,255,0.8)";
   ctx.strokeStyle = "rgba(0,150,255,0.9)";
@@ -353,7 +422,7 @@ function drawDiamondDestructionScene(t, p) {
 
   // Green squares being pulled and destroyed
   for (let i = 0; i < 10; i++) {
-    const tOff = t*0.001 + i;
+    const tOff = (t||0)*0.001 + i;
     const baseX = canvas.width * 0.2 + i * (canvas.width*0.6/10);
     const baseY = canvas.height * 0.65 + Math.sin(tOff) * 30;
     const pull = Math.min(1, (p*2) + Math.max(0, 1 - ((Math.hypot(baseX-centerX, baseY-centerY) - 50) / 600)));
@@ -371,9 +440,10 @@ function drawDiamondDestructionScene(t, p) {
     }
   }
 
-  // overlay text - use typing effect reveal based on p
-  if (p > 0.15) {
-    const reveal = Math.max(0, Math.min(1, (p - 0.15) / (1 - 0.15)));
+  // overlay text - use typing effect reveal based on p, typed faster and held longer
+  if (p > 0.12) {
+    // bias reveal: speed up typing (1.9x), ensure it appears earlier
+    const reveal = Math.max(0, Math.min(1, (p - 0.12) / (1 - 0.12) * 1.9));
     drawTextBox([
       'Commander: "The Mother Diamond has been',
       'destroying all the Green Squares on Earth.',
@@ -394,7 +464,7 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
   ctx.save();
   ctx.translate(centerX, centerY);
   const s = 140 + p*40;
-  ctx.rotate(Math.sin(t*0.0005)*0.2);
+  ctx.rotate(Math.sin((t||0)*0.0005)*0.2);
   ctx.shadowBlur = 40;
   ctx.shadowColor = "rgba(255,60,60,0.7)";
   ctx.fillStyle = "#220022";
@@ -410,14 +480,14 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
 
   // enemies around the diamond (triangles and red squares)
   for (let i = 0; i < 6; i++) {
-    const angle = (i / 6) * Math.PI*2 + t*0.0006 + p*1.2;
-    const dist = 160 + Math.sin(t*0.001 + i)*20 + p*40;
+    const angle = (i / 6) * Math.PI*2 + (t||0)*0.0006 + p*1.2;
+    const dist = 160 + Math.sin((t||0)*0.001 + i)*20 + p*40;
     const ex = centerX + Math.cos(angle) * dist;
     const ey = centerY + Math.sin(angle) * dist;
     // alternate shape
     if (i % 2 === 0) {
       // triangle
-      const size = 28 + Math.sin(t*0.002 + i)*4;
+      const size = 28 + Math.sin((t||0)*0.002 + i)*4;
       ctx.fillStyle = "rgba(100,200,255,0.9)";
       ctx.beginPath();
       ctx.moveTo(ex, ey - size/2);
@@ -426,7 +496,7 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
       ctx.closePath();
       ctx.fill();
       // brief red charge dot near tip for dramatic effect
-      const charge = Math.min(1, Math.max(0, p + (Math.sin(t*0.005 + i)*0.5 + 0.5)));
+      const charge = Math.min(1, Math.max(0, p + (Math.sin((t||0)*0.005 + i)*0.5 + 0.5)));
       if (charge > 0.6) {
         const cp = (charge - 0.6) / 0.4;
         ctx.fillStyle = `rgba(255,60,60,${cp})`;
@@ -437,7 +507,7 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
       }
     } else {
       // red square
-      const size = 26 + Math.cos(t*0.002 + i)*3;
+      const size = 26 + Math.cos((t||0)*0.002 + i)*3;
       ctx.fillStyle = "rgba(255,60,60,0.95)";
       ctx.fillRect(ex - size/2, ey - size/2, size, size);
       // green sparks to show hostility
@@ -448,8 +518,8 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
     }
   }
 
-  // caption - use typing reveal based on p
-  const reveal = Math.max(0, Math.min(1, p));
+  // caption - use typing reveal based on p, sped up
+  const reveal = Math.max(0, Math.min(1, p * 1.9));
   drawTextBox([
     `Commander: "${cinematic.playerName || "Pilot"}, you must reach the`,
     'Mother Diamond and destroy it.',
@@ -478,6 +548,13 @@ function drawGoldStarLaunch(t, p) {
   const gsY = startY + (endY - startY) * p;
   const gsSize = 40 + p * 60;
   
+  // Also animate the green square to blast off alongside the gold star
+  const greenStartX = startX - 90;
+  const greenEndX = endX - 60;
+  const greenX = greenStartX + (greenEndX - greenStartX) * Math.max(0, Math.min(1, (p + 0.05)));
+  const greenY = startY - (p * 80); // slightly upward trajectory
+  const greenSize = 36 + p * 36;
+
   if (p > 0.4) {
     const blastIntensity = Math.min(1, (p - 0.4) / 0.3);
     
@@ -493,6 +570,7 @@ function drawGoldStarLaunch(t, p) {
       ctx.fill();
     }
     
+    // gold blast
     ctx.shadowBlur = 40;
     ctx.shadowColor = "orange";
     ctx.fillStyle = `rgba(255,200,0,${blastIntensity})`;
@@ -500,8 +578,23 @@ function drawGoldStarLaunch(t, p) {
     ctx.arc(gsX - 25, gsY, 15 * blastIntensity, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
+
+    // green square blast (less intense, green/orange mix)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 12; i++) {
+      const txg = greenX - (20 + i * 10) * blastIntensity * 0.8;
+      const tyg = greenY + (Math.random() - 0.5) * 14 * blastIntensity;
+      const tSizeg = (12 - i) * blastIntensity;
+      ctx.fillStyle = `rgba(${200 - i*10},255,100,${(1 - i/12) * 0.7})`;
+      ctx.beginPath();
+      ctx.arc(txg, tyg, Math.max(1, tSizeg), 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
   
+  // draw gold star
   ctx.save();
   ctx.translate(gsX, gsY);
   ctx.shadowBlur = 30 + p * 20;
@@ -520,6 +613,16 @@ function drawGoldStarLaunch(t, p) {
   ctx.closePath();
   ctx.fill();
   ctx.restore();
+
+  // draw green square launching next to it
+  ctx.save();
+  ctx.translate(greenX, greenY);
+  ctx.shadowBlur = 20 + p * 10;
+  ctx.shadowColor = "lime";
+  ctx.fillStyle = "lime";
+  ctx.fillRect(-greenSize/2, -greenSize/2, greenSize, greenSize);
+  ctx.shadowBlur = 0;
+  ctx.restore();
   
   if (p > 0.85) {
     const flashIntensity = (p - 0.85) / 0.15;
@@ -532,16 +635,18 @@ function drawGoldStarLaunch(t, p) {
 function makeCutsceneScenes() {
   const scenes = [];
 
+  // Increased duration for hangar so hoses detaching are visible
   scenes.push({
-    duration: 2500,
+    duration: 3500,
     draw: (t, p) => {
-      drawLaunchBayScene();
+      drawLaunchBayScene(t, p);
     }
   });
 
   // Scene 2: when commander speaks about Mother Diamond destroying green squares -> show diamond-destruction scene
+  // Increase duration so text stays on screen longer
   scenes.push({
-    duration: 4500,
+    duration: 6500,
     draw: (t, p) => {
       drawDiamondDestructionScene(t, p);
     }
@@ -549,21 +654,20 @@ function makeCutsceneScenes() {
 
   // Scene 3: when the commander says the player must reach the Mother Diamond -> show mother diamond + enemies
   scenes.push({
-    duration: 4000,
+    duration: 5500,
     draw: (t, p) => {
       drawMotherDiamondAndEnemiesScene(t, p);
     }
   });
 
-  // Scene 4: Gold Star launching + dialog (increased duration so final "Believe..." remains visible longer)
+  // Scene 4: Gold Star launching + dialog (kept longer so final "Believe..." remains visible longer)
   scenes.push({
-    duration: 6000,
+    duration: 7000,
     draw: (t, p) => {
       drawGoldStarLaunch(t, p);
       
-      // Show dialog typed in realtime using reveal = p (so it types across the scene)
-      // Slightly bias reveal so dialog completes earlier than full scene end for readability
-      const reveal = Math.max(0, Math.min(1, p * 1.15));
+      // Show dialog typed in realtime using reveal biased to complete earlier for readability (faster typing)
+      const reveal = Math.max(0, Math.min(1, p * 1.6));
       drawTextBox([
         'Pilot: "I\'m going!"',
         'Commander: "Believe in the Gold Star!"'
@@ -664,15 +768,38 @@ window.addEventListener("keydown", e => {
 // ======= Persistence and restart =======
 let gameOver = false;
 let highScore = 0;
+let highScores = []; // array of {name, score}
+let recordedScoreThisRun = false;
 const HIGH_SCORE_KEY = 'mybagman_game_highscore';
+const HIGH_SCORES_KEY = 'mybagman_game_highscores';
 
-function loadHighScore() {
+function loadHighScores() {
   try {
     const v = localStorage.getItem(HIGH_SCORE_KEY);
     highScore = v ? parseInt(v, 10) || 0 : 0;
   } catch (e) {
     highScore = 0;
   }
+  try {
+    const s = localStorage.getItem(HIGH_SCORES_KEY);
+    highScores = s ? JSON.parse(s) : [];
+    if (!Array.isArray(highScores)) highScores = [];
+    // ensure numeric scores
+    highScores.forEach(h => { h.score = parseInt(h.score, 10) || 0; });
+    // maintain highScore
+    if (highScores.length > 0) {
+      highScore = Math.max(highScore, highScores.reduce((m, x) => Math.max(m, x.score), 0));
+    }
+  } catch (e) {
+    highScores = [];
+  }
+}
+
+function saveHighScoresToStorage() {
+  try {
+    localStorage.setItem(HIGH_SCORES_KEY, JSON.stringify(highScores));
+    localStorage.setItem(HIGH_SCORE_KEY, String(highScores.length ? Math.max(highScore, highScores[0].score) : highScore));
+  } catch (e) {}
 }
 
 function saveHighScoreIfNeeded() {
@@ -681,6 +808,19 @@ function saveHighScoreIfNeeded() {
       highScore = score;
       localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
     }
+  } catch (e) {}
+}
+
+function saveHighScoresOnGameOver() {
+  if (recordedScoreThisRun) return;
+  recordedScoreThisRun = true;
+  try {
+    const entry = { name: cinematic.playerName || "Pilot", score: score };
+    highScores.push(entry);
+    highScores.sort((a, b) => b.score - a.score);
+    highScores = highScores.slice(0, 5);
+    if (highScores.length > 0) highScore = Math.max(highScore, highScores[0].score);
+    saveHighScoresToStorage();
   } catch (e) {}
 }
 
@@ -699,8 +839,9 @@ function resetGame() {
   player.lives = 3;
   respawnPlayer();
   respawnGoldStar();
-  loadHighScore();
+  loadHighScores();
   gameOver = false;
+  recordedScoreThisRun = false;
   startCutscene();
 }
 
@@ -2396,15 +2537,35 @@ function gameLoop() {
     } else {
       gameOver = true;
       saveHighScoreIfNeeded();
+      saveHighScoresOnGameOver(); // record top-5 with pilot name
+      // draw final screen
       ctx.fillStyle = "white"; 
       ctx.font = "50px Arial"; 
       ctx.textAlign = "center";
-      ctx.fillText("GAME OVER", canvas.width/2, canvas.height/2);
+      ctx.fillText("GAME OVER", canvas.width/2, canvas.height/2 - 80);
       ctx.font = "30px Arial";
-      ctx.fillText(`Final Score: ${score}`, canvas.width/2, canvas.height/2+50);
+      ctx.fillText(`Final Score: ${score}`, canvas.width/2, canvas.height/2 - 30);
       ctx.font = "20px Arial";
-      ctx.fillText(`Best: ${highScore}`, canvas.width/2, canvas.height/2+90);
-      ctx.fillText(`Press R to restart`, canvas.width/2, canvas.height/2+130);
+      ctx.fillText(`Best: ${highScore}`, canvas.width/2, canvas.height/2 + 10);
+      ctx.fillText(`Press R to restart`, canvas.width/2, canvas.height/2 + 50);
+
+      // Draw scoreboard top 5 with names
+      ctx.font = "20px Arial";
+      ctx.textAlign = "left";
+      const boardX = canvas.width/2 - 220;
+      const boardY = canvas.height/2 + 90;
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(boardX - 12, boardY - 28, 440, 160);
+      ctx.fillStyle = "white";
+      ctx.font = "22px Arial";
+      ctx.fillText("Top 5 Scores", boardX, boardY);
+      ctx.font = "18px Arial";
+      ctx.fillStyle = "lightcyan";
+      for (let i = 0; i < 5; i++) {
+        const hi = highScores[i];
+        const text = hi ? `${i+1}. ${hi.name} - ${hi.score}` : `${i+1}. ---`;
+        ctx.fillText(text, boardX, boardY + 30 + i * 26);
+      }
     }
   } else {
     requestAnimationFrame(gameLoop);
