@@ -2879,31 +2879,4 @@ function drawDiamondDestructionScene(t, p) {
 function loadHighScores() {
   try {
     const raw = localStorage.getItem('highScores');
-    if (raw) {
-      highScores = JSON.parse(raw) || [];
-      highScore = highScores.length ? Math.max(...highScores.map(s => s.score || 0)) : 0;
-    } else {
-      highScores = [];
-      highScore = 0;
-    }
-  } catch (err) {
-    highScores = [];
-    highScore = 0;
-  }
-}
-
-function saveHighScoresOnGameOver() {
-  if (recordedScoreThisRun) return;
-  highScores.push({ score: score, date: Date.now() });
-  highScores.sort((a,b) => b.score - a.score);
-  highScores = highScores.slice(0, 10);
-  try {
-    localStorage.setItem('highScores', JSON.stringify(highScores));
-  } catch (err) {}
-  highScore = highScores.length ? highScores[0].score : highScore;
-  recordedScoreThisRun = true;
-}
-
-// startCutscene: minimal implementation so game starts reliably
-function startCutscene() {
-  // For now skip a long cinematic and start the game immediately.
+   
