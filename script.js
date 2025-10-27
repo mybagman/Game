@@ -2847,4 +2847,63 @@ function drawDiamondDestructionScene(t, p) {
   ctx.globalCompositeOperation = 'lighter';
   ctx.fillStyle = `rgba(255,220,180,${0.35 + 0.65 * flash})`;
   ctx.beginPath();
-  ctx.arc(cx, cy, 60 + flash * 120, 0, Math.PI * 
+  ctx.arc(cx, cy, 60 + flash * 120, 0, Math.PI * 2);
+  ctx.fill();
+
+  // a few radial shards to suggest destruction
+  ctx.strokeStyle = `rgba(255,200,120,${0.6 * flash})`;
+  ctx.lineWidth = 2 + 6 * flash;
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + (frameCount * 0.02);
+    const r1 = 40 + flash * 80;
+    const r2 = r1 + 60 + Math.random() * 40;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+    ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // HUD-like text
+  ctx.fillStyle = "rgba(200,220,255,0.9)";
+  ctx.font = "20px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("DIAMOND CORE DESTROYED", cx, cy + 180 * (1 - p));
+  ctx.fillStyle = `rgba(255,255,255,${0.8 * (1 - p)})`;
+  ctx.font = "14px Arial";
+  ctx.fillText("Systems failing... retreat!", cx, cy + 200 * (1 - p));
+}
+
+// -------------------- Minimal missing helpers (non-intrusive) --------------------
+
+function loadHighScores() {
+  try {
+    const raw = localStorage.getItem('highScores');
+    if (raw) {
+      highScores = JSON.parse(raw) || [];
+      highScore = highScores.length ? Math.max(...highScores.map(s => s.score || 0)) : 0;
+    } else {
+      highScores = [];
+      highScore = 0;
+    }
+  } catch (err) {
+    highScores = [];
+    highScore = 0;
+  }
+}
+
+function saveHighScoresOnGameOver() {
+  if (recordedScoreThisRun) return;
+  highScores.push({ score: score, date: Date.now() });
+  highScores.sort((a,b) => b.score - a.score);
+  highScores = highScores.slice(0, 10);
+  try {
+    localStorage.setItem('highScores', JSON.stringify(highScores));
+  } catch (err) {}
+  highScore = highScores.length ? highScores[0].score : highScore;
+  recordedScoreThisRun = true;
+}
+
+// startCutscene: minimal implementation so game starts reliably
+function startCutscene() {
+  // For now skip a long cinematic and start the game immediately.
