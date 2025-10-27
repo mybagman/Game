@@ -2755,81 +2755,11 @@ function drawLaunchBayScene(t, p) {
     const gy = canvas.height * 0.6 + j * 20;
     ctx.beginPath(); ctx.moveTo(hangarX, gy); ctx.lineTo(hangarX + hangarW, gy); ctx.stroke();
   }
-  const squareSize = 60;
-  const squareX = canvas.width / 2 - squareSize / 2;
-  const squareY = canvas.height / 2 - squareSize / 2;
-  const leftAnchor = { x: hangarX + 40, y: squareY + squareSize / 2 - 6 };
-  const rightAnchor = { x: hangarX + hangarW - 40, y: squareY + squareSize / 2 - 6 };
-  const disconnectProgress = Math.max(0, Math.min(1, p * 1.6));
-  const hoseFade = 1 - disconnectProgress;
-  const hoseRetract = disconnectProgress * 60;
-  function drawHose(from, to, seed) {
-    ctx.save();
-    ctx.lineWidth = 8;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = `rgba(40,200,120,${0.95 * hoseFade})`;
-    ctx.beginPath();
-    const ctrlX = (from.x + to.x) / 2 + Math.sin((t||0)*0.002 + seed) * 30 * (1 - disconnectProgress);
-    const ctrlY = (from.y + to.y) / 2 + Math.cos((t||0)*0.002 + seed) * 10 * (1 - disconnectProgress);
-    const targetX = to.x + (from.x - to.x) * (hoseRetract / 120);
-    const targetY = to.y + (from.y - to.y) * (hoseRetract / 120);
-    ctx.moveTo(from.x, from.y);
-    ctx.quadraticCurveTo(ctrlX, ctrlY, targetX, targetY);
-    ctx.stroke();
-    const clampProgress = Math.min(1, disconnectProgress * 1.6);
-    ctx.fillStyle = `rgba(80,240,180,${0.9 * hoseFade})`;
-    const clampX = targetX + (Math.random() - 0.5) * 2;
-    const clampY = targetY - clampProgress * 40;
-    ctx.beginPath();
-    ctx.arc(clampX, clampY, 6 * (1 - clampProgress * 0.8), 0, Math.PI*2);
-    ctx.fill();
-    ctx.restore();
-  }
-  drawHose({ x: squareX + 8, y: squareY + squareSize/2 }, leftAnchor, 1);
-  drawHose({ x: squareX + squareSize - 8, y: squareY + squareSize/2 }, rightAnchor, 2);
-  if (disconnectProgress > 0.6) {
-    for (let i = 0; i < 6; i++) {
-      const bx = squareX + (Math.random() - 0.5) * squareSize * 1.2;
-      const by = squareY + (Math.random() - 0.5) * squareSize * 1.2;
-      ctx.fillStyle = `rgba(160,255,200,${Math.random() * 0.6})`;
-      ctx.fillRect(bx, by, 3, 3);
-    }
-  }
   ctx.shadowBlur = 30 * (1 - disconnectProgress * 0.6);
   ctx.shadowColor = "lime";
   ctx.fillStyle = "lime";
   ctx.fillRect(squareX, squareY, squareSize, squareSize);
   ctx.shadowBlur = 0;
-  const eyeAppear = Math.max(0, Math.min(1, disconnectProgress * 1.4));
-  if (eyeAppear > 0.02) {
-    const innerPad = 8;
-    const travelWidth = squareSize - innerPad * 2;
-    const eyeProgress = Math.max(0, Math.min(1, (disconnectProgress - 0.05) / 0.95));
-    const eyeX = squareX + innerPad + travelWidth * eyeProgress;
-    const eyeY = squareY + squareSize / 2;
-    ctx.save();
-    ctx.shadowBlur = 18 * eyeAppear;
-    ctx.shadowColor = "rgba(255,220,80,0.9)";
-    ctx.fillStyle = `rgba(255,220,80,${0.6 + eyeAppear * 0.4})`;
-    ctx.beginPath();
-    ctx.arc(eyeX, eyeY, 8 + 4 * eyeAppear, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    if (eyeProgress > 0.6) {
-      ctx.globalAlpha = Math.min(0.6, (eyeProgress - 0.6) / 0.4 * 0.6);
-      ctx.fillStyle = "rgba(255,220,80,0.12)";
-      ctx.fillRect(squareX, eyeY - 2, squareSize * (0.4 + 0.6 * Math.sin(Date.now()*0.004)), 4);
-      ctx.globalAlpha = 1;
-    }
-    ctx.restore();
-  }
-  ctx.fillStyle = "rgba(255,255,255,0.8)";
-  ctx.font = "24px Arial";
-  ctx.textAlign = "center";
-  ctx.fillText("YEAR 2050", canvas.width / 2, 60);
-  ctx.font = "18px Arial";
-  ctx.fillStyle = "rgba(200,220,255,0.7)";
-  ctx.fillText("Earth's Orbit - Hangar 7", canvas.width / 2, 90);
 }
 
 // Minimal placeholder cinematic scene draw functions that were missing in the provided code.
@@ -2879,4 +2809,74 @@ function drawDiamondDestructionScene(t, p) {
 function loadHighScores() {
   try {
     const raw = localStorage.getItem('highScores');
-   
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Support both array of numbers and array of {score, date}
+      if (Array.isArray(parsed)) {
+        highScores = parsed.map(item => {
+          if (typeof item === 'number') return { score: item, date: null };
+          if (item && typeof item.score === 'number') return item;
+          return { score: 0, date: null };
+        });
+      } else {
+        highScores = [];
+      }
+      if (highScores.length > 0) {
+        highScore = highScores.reduce((max, s) => Math.max(max, s.score || 0), 0);
+      } else {
+        highScore = 0;
+      }
+    } else {
+      highScores = [];
+      highScore = 0;
+    }
+  } catch (err) {
+    console.error('Failed to load high scores', err);
+    highScores = [];
+    highScore = 0;
+  }
+}
+
+function saveHighScoresOnGameOver() {
+  try {
+    if (recordedScoreThisRun) return;
+    recordedScoreThisRun = true;
+    const entry = { score: score, date: new Date().toISOString() };
+    highScores.push(entry);
+    highScores.sort((a, b) => (b.score || 0) - (a.score || 0));
+    highScores = highScores.slice(0, 10);
+    localStorage.setItem('highScores', JSON.stringify(highScores));
+    highScore = highScores.length > 0 ? highScores[0].score : highScore;
+  } catch (err) {
+    console.error('Failed to save high scores', err);
+  }
+}
+
+function startCutscene() {
+  cinematic.playing = true;
+  const startTime = Date.now();
+  let phase = 0;
+  function step() {
+    if (!ensureCanvas()) return;
+    const t = Date.now() - startTime;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (phase === 0) {
+      drawLaunchBayScene(t, Math.min(1, t / 1800));
+      drawTextBox([`Pilot: ${cinematic.playerName}`, "Prepare for deployment."], 40, canvas.height - 160, Math.min(600, canvas.width - 80), 26, "left", Math.min(1, t/1800));
+      if (t > 1800) phase = 1;
+    } else if (phase === 1) {
+      const p = Math.min(1, (t - 1800) / 1200);
+      drawDiamondDestructionScene(t, p);
+      drawTextBox(["Alert: Diamond core integrity compromised."], 40, canvas.height - 140, Math.min(700, canvas.width - 80), 22, "left", p);
+      if (t > 1800 + 1200) phase = 2;
+    } else {
+      cinematic.playing = false;
+      spawnWave(wave);
+      requestAnimationFrame(gameLoop);
+      return;
+    }
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
