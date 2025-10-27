@@ -290,7 +290,7 @@ function makeCutsceneScenes() {
       const name = cinematic.playerName || "Pilot";
       drawTextBox([
         `Commander: "We're the last ones left, ${name}.`,
-        'You have to take out the Mother Diamond.',
+        'Take out the Mother Diamond.',
         'Then We can take back Earth."'
       ], 50, canvas.height - 170, canvas.width - 100);
     }
@@ -305,7 +305,7 @@ function makeCutsceneScenes() {
       if (p < 0.3) {
         drawTextBox([
           'Pilot: "I\'m going!"',
-          'Commander: "Use the Gold Star its your only hope!"'
+          'Commander: "Believe in the Gold Star!"'
         ], 50, canvas.height - 140, 520);
       }
     }
@@ -331,7 +331,7 @@ function makeCutsceneScenes() {
         ctx.fillText(countdown.toString(), canvas.width / 2, canvas.height / 2 + 40);
         ctx.font = "32px Arial";
         ctx.fillStyle = "cyan";
-        ctx.fillText("PREPARE FOR BATTLE", canvas.width / 2, canvas.height / 2 + 100);
+        ctx.fillText("GET READY FOR THE NEXT BATTLE", canvas.width / 2, canvas.height / 2 + 100);
       }
     }
   });
