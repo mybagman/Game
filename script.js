@@ -2903,12 +2903,37 @@ window.addEventListener("resize", () => {
   canvas.height = window.innerHeight;
 });
 
-// Basic initialization
-window.addEventListener("load", () => {
-  loadHighScores();
-  ensureCanvas();
-  respawnPlayer();
-  respawnGoldStar();
-  spawnWave(0);
-  requestAnimationFrame(gameLoop);
-});
+// -------------------- Enhanced Cinematic cutscene system (INSERTED) --------------------
+
+// drawTextBox uses roundRect defined earlier
+function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal = 1) {
+  const joined = lines.join("\n");
+  const totalChars = joined.length;
+  const revealChars = Math.floor(totalChars * Math.max(0, Math.min(1, reveal)));
+
+  let remaining = revealChars;
+  const visibleLines = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (remaining >= line.length) {
+      visibleLines.push(line);
+      remaining -= line.length;
+    } else if (remaining > 0) {
+      visibleLines.push(line.slice(0, remaining));
+      remaining = 0;
+    } else {
+      visibleLines.push("");
+    }
+  }
+
+  const showCursor = revealChars < totalChars && (Math.floor(Date.now() / 200) % 2 === 0);
+
+  ctx.save();
+  ctx.font = "18px 'Courier New', monospace";
+  const padding = 14;
+  const h = visibleLines.length * lineHeight + padding*2;
+  ctx.fillStyle = "rgba(5,10,15,0.88)";
+  ctx.fillRect(x, y - padding, maxW, h);
+  ctx.strokeStyle = "rgba(40,200,255,0.12)";
+  ctx.lineWidth = 2;
+  roundRect(ctx, x + 0.5, y - padding + 0.5, maxW - 1, h - 1
