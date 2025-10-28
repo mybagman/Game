@@ -1,9 +1,3 @@
-// Repaired script.js
-// Fixes syntax errors and corrupted fragments so the game runs.
-// Adds Earth-orbit style background for the first 11 waves (wave indices 0..10)
-// and moves the player slightly closer to Earth each time a new wave is spawned (first 11 waves).
-// No other gameplay logic was preserved where possible; missing helpers were added as minimal stubs.
-
 // == Globals and initial state ==
 let canvas, ctx;
 
@@ -2657,8 +2651,9 @@ function init() {
   startCutscene();
 }
 
-// -------------------- Cinematic system --------------------
+// -------------------- Enhanced Cinematic cutscene system --------------------
 
+// drawTextBox (enhanced) - replaces previous cinematic textbox
 function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal = 1) {
   const joined = lines.join("\n");
   const totalChars = joined.length;
@@ -2729,13 +2724,11 @@ function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal 
   ctx.restore();
 }
 
-// A subset of cinematic draw functions (kept as in original repo)
+// Cinematic scene drawing functions (enhanced versions)
 function drawLaunchBayScene(t, p) {
-  // Ensure local fallbacks and compute layout variables to avoid ReferenceError
-  const disconnectProgress = typeof p === 'number' ? p : 0;
-
   ctx.fillStyle = "#000814";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
   for (let i = 0; i < 140; i++) {
     const x = (i * 137) % canvas.width;
     const y = (i * 241) % canvas.height;
@@ -2743,149 +2736,87 @@ function drawLaunchBayScene(t, p) {
     ctx.fillStyle = `rgba(255,255,255,${0.12 * alpha})`;
     ctx.fillRect(x, y, 2, 2);
   }
+
   const hangarX = canvas.width * 0.15, hangarW = canvas.width * 0.7;
   const hangarY = canvas.height * 0.28, hangarH = canvas.height * 0.52;
   const g = ctx.createLinearGradient(hangarX, hangarY, hangarX, hangarY+hangarH);
-  g.addColorStop(0, "#0f1721"); g.addColorStop(1, "#121827");
-  ctx.fillStyle = g; ctx.fillRect(hangarX, hangarY, hangarW, hangarH);
-  ctx.strokeStyle = "#1e2b3a"; ctx.lineWidth = 2;
+  g.addColorStop(0, "#0f1721");
+  g.addColorStop(1, "#121827");
+  ctx.fillStyle = g;
+  ctx.fillRect(hangarX, hangarY, hangarW, hangarH);
+
+  ctx.strokeStyle = "#1e2b3a";
+  ctx.lineWidth = 2;
   for (let i = 0; i < 12; i++) {
     const x = hangarX + (hangarW / 12) * i;
-    ctx.beginPath(); ctx.moveTo(x, hangarY); ctx.lineTo(x, hangarY + hangarH); ctx.stroke();
-  }
-  ctx.strokeStyle = "rgba(50,80,100,0.08)"; ctx.lineWidth = 1;
-  for (let j = 0; j < 10; j++) {
-    const gy = canvas.height * 0.6 + j * 20;
-    ctx.beginPath(); ctx.moveTo(hangarX, gy); ctx.lineTo(hangarX + hangarW, gy); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, hangarY);
+    ctx.lineTo(x, hangarY + hangarH);
+    ctx.stroke();
   }
 
-  // Square / UI element shown in hangar: compute sensible defaults
-  const squareSize = Math.min(canvas.width, canvas.height) * 0.06;
-  const squareX = hangarX + (hangarW - squareSize) * 0.5;
-  const squareY = hangarY + (hangarH - squareSize) * 0.5;
+  ctx.strokeStyle = "rgba(50,80,100,0.08)";
+  ctx.lineWidth = 1;
+  for (let j = 0; j < 10; j++) {
+    const gy = canvas.height * 0.6 + j * 20;
+    ctx.beginPath();
+    ctx.moveTo(hangarX, gy);
+    ctx.lineTo(hangarX + hangarW, gy);
+    ctx.stroke();
+  }
+
+  const squareSize = 60;
+  const squareX = canvas.width / 2 - squareSize / 2;
+  const squareY = canvas.height / 2 - squareSize / 2;
+
+  const leftAnchor = { x: hangarX + 40, y: squareY + squareSize / 2 - 6 };
+  const rightAnchor = { x: hangarX + hangarW - 40, y: squareY + squareSize / 2 - 6 };
+  const disconnectProgress = Math.max(0, Math.min(1, p * 1.6));
+  const hoseFade = 1 - disconnectProgress;
+  const hoseRetract = disconnectProgress * 60;
+
+  function drawHose(from, to, seed) {
+    ctx.save();
+    ctx.lineWidth = 8;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = `rgba(40,200,120,${0.95 * hoseFade})`;
+    ctx.beginPath();
+    const ctrlX = (from.x + to.x) / 2 + Math.sin((t||0)*0.002 + seed) * 30 * (1 - disconnectProgress);
+    const ctrlY = (from.y + to.y) / 2 + Math.cos((t||0)*0.002 + seed) * 10 * (1 - disconnectProgress);
+    const targetX = to.x + (from.x - to.x) * (hoseRetract / 120);
+    const targetY = to.y + (from.y - to.y) * (hoseRetract / 120);
+    ctx.moveTo(from.x, from.y);
+    ctx.quadraticCurveTo(ctrlX, ctrlY, targetX, targetY);
+    ctx.stroke();
+
+    const clampProgress = Math.min(1, disconnectProgress * 1.6);
+    ctx.fillStyle = `rgba(80,240,180,${0.9 * hoseFade})`;
+    const clampX = targetX + (Math.random() - 0.5) * 2;
+    const clampY = targetY - clampProgress * 40;
+    ctx.beginPath();
+    ctx.arc(clampX, clampY, 6 * (1 - clampProgress * 0.8), 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawHose({ x: squareX + 8, y: squareY + squareSize/2 }, leftAnchor, 1);
+  drawHose({ x: squareX + squareSize - 8, y: squareY + squareSize/2 }, rightAnchor, 2);
+
+  if (disconnectProgress > 0.6) {
+    for (let i = 0; i < 6; i++) {
+      const bx = squareX + (Math.random() - 0.5) * squareSize * 1.2;
+      const by = squareY + (Math.random() - 0.5) * squareSize * 1.2;
+      ctx.fillStyle = `rgba(160,255,200,${Math.random() * 0.6})`;
+      ctx.fillRect(bx, by, 3, 3);
+    }
+  }
 
   ctx.shadowBlur = 30 * (1 - disconnectProgress * 0.6);
   ctx.shadowColor = "lime";
   ctx.fillStyle = "lime";
   ctx.fillRect(squareX, squareY, squareSize, squareSize);
   ctx.shadowBlur = 0;
-}
 
-// Minimal placeholder cinematic scene draw functions that were missing in the provided code.
-// These are intentionally lightweight so they don't change gameplay logic but prevent runtime errors.
-function drawDiamondDestructionScene(t, p) {
-  // t: seconds-ish, p: progress 0..1
-  ctx.fillStyle = "#081020";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // center flash / diamond
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
-  const flash = 1 - Math.abs(0.5 - (p % 1)) * 2;
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.fillStyle = `rgba(255,220,180,${0.35 + 0.65 * flash})`;
-  ctx.beginPath();
-  ctx.arc(cx, cy, 60 + flash * 120, 0, Math.PI * 2);
-  ctx.fill();
-
-  // a few radial shards to suggest destruction
-  ctx.strokeStyle = `rgba(255,200,120,${0.6 * flash})`;
-  ctx.lineWidth = 2 + 6 * flash;
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2 + (frameCount * 0.02);
-    const r1 = 40 + flash * 80;
-    const r2 = r1 + 60 + Math.random() * 40;
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
-    ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  // HUD-like text
-  ctx.fillStyle = "rgba(200,220,255,0.9)";
-  ctx.font = "20px Arial";
-  ctx.textAlign = "center";
-  ctx.fillText("DIAMOND CORE DESTROYED", cx, cy + 180 * (1 - p));
-  ctx.fillStyle = `rgba(255,255,255,${0.8 * (1 - p)})`;
-  ctx.font = "14px Arial";
-  ctx.fillText("Systems failing... retreat!", cx, cy + 200 * (1 - p));
-}
-
-// -------------------- Minimal missing helpers (non-intrusive) --------------------
-
-function loadHighScores() {
-  try {
-    const raw = localStorage.getItem('highScores');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      // Support both array of numbers and array of {score, date}
-      if (Array.isArray(parsed)) {
-        highScores = parsed.map(item => {
-          if (typeof item === 'number') return { score: item, date: null };
-          if (item && typeof item.score === 'number') return item;
-          return { score: 0, date: null };
-        });
-      } else {
-        highScores = [];
-      }
-      if (highScores.length > 0) {
-        highScore = highScores.reduce((max, s) => Math.max(max, s.score || 0), 0);
-      } else {
-        highScore = 0;
-      }
-    } else {
-      highScores = [];
-      highScore = 0;
-    }
-  } catch (err) {
-    console.error('Failed to load high scores', err);
-    highScores = [];
-    highScore = 0;
-  }
-}
-
-function saveHighScoresOnGameOver() {
-  try {
-    if (recordedScoreThisRun) return;
-    recordedScoreThisRun = true;
-    const entry = { score: score, date: new Date().toISOString() };
-    highScores.push(entry);
-    highScores.sort((a, b) => (b.score || 0) - (a.score || 0));
-    highScores = highScores.slice(0, 10);
-    localStorage.setItem('highScores', JSON.stringify(highScores));
-    highScore = highScores.length > 0 ? highScores[0].score : highScore;
-  } catch (err) {
-    console.error('Failed to save high scores', err);
-  }
-}
-
-function startCutscene() {
-  cinematic.playing = true;
-  const startTime = Date.now();
-  let phase = 0;
-  function step() {
-    if (!ensureCanvas()) return;
-    const t = Date.now() - startTime;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (phase === 0) {
-      drawLaunchBayScene(t, Math.min(1, t / 1800));
-      drawTextBox([`Pilot: ${cinematic.playerName}`, "Prepare for deployment."], 40, canvas.height - 160, Math.min(600, canvas.width - 80), 26, "left", Math.min(1, t/1800));
-      if (t > 1800) phase = 1;
-    } else if (phase === 1) {
-      const p = Math.min(1, (t - 1800) / 1200);
-      drawDiamondDestructionScene(t, p);
-      drawTextBox(["Alert: Diamond core integrity compromised."], 40, canvas.height - 140, Math.min(700, canvas.width - 80), 22, "left", p);
-      if (t > 1800 + 1200) phase = 2;
-    } else {
-      cinematic.playing = false;
-      spawnWave(wave);
-      requestAnimationFrame(gameLoop);
-      return;
-    }
-    requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
-}
+  const eyeAppear = Math.max(0, Math.min(1, disconnectProgress * 1.4));
+  if (eyeAppear > 0.02) {
+    const innerPad = 8
