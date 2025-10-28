@@ -80,20 +80,24 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 function getSafeSpawnPosition(minDist = MIN_SPAWN_DIST) {
+  // Guard against canvas not yet being created (e.g. code running at module load)
+  const w = (canvas && canvas.width) ? canvas.width : (window ? window.innerWidth : 800);
+  const h = (canvas && canvas.height) ? canvas.height : (window ? window.innerHeight : 600);
+
   for (let i = 0; i < 50; i++) {
-    const x = Math.random() * canvas.width;
-    const y = Math.random() * canvas.height;
-    const dxP = x - player.x, dyP = y - player.y;
-    const dxG = x - goldStar.x, dyG = y - goldStar.y;
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const dxP = x - (player.x || w/2), dyP = y - (player.y || h/2);
+    const dxG = x - (goldStar.x || w/4), dyG = y - (goldStar.y || h/2);
     const dP = Math.hypot(dxP, dyP);
     const dG = Math.hypot(dxG, dyG);
     if (dP >= minDist && dG >= minDist) return { x, y };
   }
   const edge = Math.floor(Math.random() * 4);
-  if (edge === 0) return { x: 10, y: Math.random() * canvas.height };
-  if (edge === 1) return { x: canvas.width - 10, y: Math.random() * canvas.height };
-  if (edge === 2) return { x: Math.random() * canvas.width, y: 10 };
-  return { x: Math.random() * canvas.width, y: canvas.height - 10 };
+  if (edge === 0) return { x: 10, y: Math.random() * h };
+  if (edge === 1) return { x: w - 10, y: Math.random() * h };
+  if (edge === 2) return { x: Math.random() * w, y: 10 };
+  return { x: Math.random() * w, y: h - 10 };
 }
 
 // ----------------------
@@ -3155,11 +3159,12 @@ function restartGame() {
   spawnWave(wave);
 }
 
-// If init already ran and startCutscene was called, gameLoop will be scheduled by init.
-// Otherwise, ensure a frame will be scheduled.
+// If init already ran and cinematic already finished, ensure the first wave is present.
+// Guard this so it doesn't run before the canvas/init is ready.
 if (!cinematic.playing) {
-  // If init was run and cinematic already finished, ensure the first wave is present.
-  if (wave === 0 && enemies.length === 0 && diamonds.length === 0 && tanks.length === 0 && walkers.length === 0 && mechs.length === 0) {
-    spawnWave(wave);
+  if (canvas && ctx) {
+    if (wave === 0 && enemies.length === 0 && diamonds.length === 0 && tanks.length === 0 && walkers.length === 0 && mechs.length === 0) {
+      spawnWave(wave);
+    }
   }
 }
