@@ -2812,35 +2812,4 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
       const size = 28 + Math.sin((t||0)*0.002 + i)*4;
       ctx.fillStyle = "rgba(100,200,255,0.9)";
       ctx.beginPath();
-      ctx.moveTo(ex, ey - size/2);
-      ctx.lineTo(ex - size/2, ey + size/2);
-      ctx.lineTo(ex + size/2, ey + size/2);
-      ctx.closePath();
-      ctx.fill();
-      const charge = Math.min(1, Math.max(0, p + (Math.sin((t||0)*0.005 + i)*0.5 + 0.5)));
-      if (charge > 0.6) {
-        const cp = (charge - 0.6) / 0.4;
-        ctx.fillStyle = `rgba(255,60,60,${cp})`;
-        const tx = ex, ty = ey - size/2;
-        ctx.beginPath();
-        ctx.arc(tx, ty + (1-cp)*6, 4 + cp*6, 0, Math.PI*2);
-        ctx.fill();
-      }
-    } else {
-      const size = 26 + Math.cos((t||0)*0.002 + i)*3;
-      ctx.fillStyle = "rgba(255,60,60,0.95)";
-      ctx.fillRect(ex - size/2, ey - size/2, size, size);
-      if (p > 0.4) {
-        ctx.fillStyle = `rgba(0,255,0,${0.3 + (Math.random()*0.4)})`;
-        ctx.fillRect(ex + (Math.random()-0.5)*10, ey + (Math.random()-0.5)*10, 3, 3);
-      }
-    }
-  }
-
-  const reveal = Math.max(0, Math.min(1, p * 1.9));
-  drawTextBox([
-    `Commander: "${cinematic.playerName || "Pilot"}, you must reach the`,
-    'Mother Diamond and destroy it.',
-    'Then we can take back Earth."'
-  ], 50, canvas.height - 170, canvas.width - 100, 26, "left", reveal);
-}
+     
