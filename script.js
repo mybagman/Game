@@ -2835,3 +2835,10 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
     'Mother Diamond and destroy it.',
     'Then we can take back Earth."'
   ], 50, canvas
+  const reveal = Math.max(0, Math.min(1, p * 1.9));
+  drawTextBox([
+    `Commander: "${cinematic.playerName || "Pilot"}, you must reach the`,
+    'Mother Diamond and destroy it.',
+    'Then we can take back Earth."'
+  ], 50, canvas.height - 170, canvas.width - 100, 26, "left", reveal);
+}
