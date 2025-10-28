@@ -312,7 +312,7 @@ const waves = [
   // Wave 19: Full Assault
   { theme: "full-assault", enemies: [{ type: "tank", count: 6 }, { type: "walker", count: 6 }, { type: "mech", count: 3 }, { type: "mini-boss", count: 2 }] },
   // Wave 20: The Last Stand
-  { theme: "last-stand", enemies: [{ type: "red-square", count: 15 }, { type: "triangle", count: 15 }, { type: "tank", count: 5 }, { type: "walker", count: 5 }, { type: "mech", count: 4 }, { type: "boss", count: 1 }] },
+  { theme: "last-stand", enemies: [{ type: "red-square", count: 15 }, { type: "triangle", count: 15 }, { type: "tank", count: 5 }, { type: "walker", count: 5 }, { type: "mech", count: 4 }, { type: "bo[...]
   // Wave 21: MOTHER CORE
   { theme: "mother-core", enemies: [{ type: "mother-core", count: 1 }, { type: "triangle", count: 8 }, { type: "reflector", count: 4 }] }
 ];
@@ -2875,4 +2875,33 @@ function drawGoldStarLaunch(t, p) {
     ctx.shadowBlur = 0;
 
     ctx.save();
-    ctx.globalCompositeOperation = '
+    // Fixed truncated assignment: set composite mode and finish drawing, then restore and close function.
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(255,200,0,${blastIntensity * 0.5})`;
+    ctx.beginPath();
+    ctx.arc(gsX, gsY, 60 * blastIntensity, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+  }
+
+  // small gold star draw (static)
+  ctx.save();
+  ctx.translate(gsX, gsY);
+  ctx.fillStyle = "gold";
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const angle = (i*4*Math.PI)/5 - Math.PI/2;
+    const radius = i%2===0 ? gsSize/2 : gsSize/4;
+    const x = Math.cos(angle)*radius, y = Math.sin(angle)*radius;
+    if (i === 0) ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Reveal dialog when nearing full p
+  if (p > 0.6) {
+    const reveal = Math.max(0, Math.min(1, (p - 0.6) / 0.4));
+    drawText
