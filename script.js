@@ -2902,8 +2902,8 @@ function respawnGoldStar() {
   goldStar.x = Math.random() * (canvas.width - 200) + 100;
   goldStar.y = Math.random() * (canvas.height - 200) + 100;
   goldStar.respawnTimer = 0;
-  goldStar.collecting = false;
-  goldStar.collectTimer = 0;
+  goldStar.collecting = false
+   goldStar.collectTimer = 0;
   goldStar.targetPowerUp = null;
   resetAuraOnDeath();
 }
