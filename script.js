@@ -2936,4 +2936,30 @@ function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal 
   ctx.fillRect(x, y - padding, maxW, h);
   ctx.strokeStyle = "rgba(40,200,255,0.12)";
   ctx.lineWidth = 2;
-  roundRect(ctx, x + 0.5, y - padding + 0.5, maxW - 1, h - 1
+  // close the previous unterminated roundRect call and stroke it
+  roundRect(ctx, x + 0.5, y - padding + 0.5, maxW - 1, h - 1, 8);
+  ctx.stroke();
+
+  // compute text X based on alignment
+  let textX;
+  const paddingX = padding;
+  if (align === "center") textX = x + maxW / 2;
+  else if (align === "right") textX = x + maxW - paddingX;
+  else textX = x + paddingX;
+
+  ctx.fillStyle = "white";
+  ctx.textAlign = (align === "center" ? "center" : (align === "right" ? "right" : "left"));
+  ctx.textBaseline = "top";
+
+  for (let i = 0; i < visibleLines.length; i++) {
+    let line = visibleLines[i];
+    // append blinking cursor to the last visible line if text is still revealing
+    if (i === visibleLines.length - 1 && showCursor) {
+      line = line + "_";
+    }
+    const textY = y + (i * lineHeight);
+    ctx.fillText(line, textX, textY);
+  }
+
+  ctx.restore();
+}
