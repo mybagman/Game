@@ -2914,3 +2914,252 @@ function startCutscene() {
     5000, // Enemy overview
     6000, // Diamond destruction / charging
     6000  // Mother diamond + enemies
+  ];
+
+  // Start the cinematic
+  cinematic.playing = true;
+  cinematic.sceneIndex = 0;
+  cinematic.sceneStart = Date.now();
+
+  // Ensure the first scene is ready (no game entities spawned during cutscene)
+  bullets = [];
+  lightning = [];
+  enemies = [];
+  diamonds = [];
+  tanks = [];
+  walkers = [];
+  mechs = [];
+  powerUps = [];
+  tunnels = [];
+  debris = [];
+  explosions = [];
+  auraSparks = [];
+  auraShockwaves = [];
+  cloudParticles = [];
+  reflectionEffects = [];
+  frameCount = 0;
+}
+
+// Helper to advance cinematic
+function advanceCinematic() {
+  cinematic.sceneIndex++;
+  cinematic.sceneStart = Date.now();
+  if (cinematic.sceneIndex >= cinematic.sceneDurations.length) {
+    // End cinematic and start the first wave / gameplay
+    cinematic.playing = false;
+    // Reset some state and spawn first wave
+    frameCount = 0;
+    bullets = [];
+    lightning = [];
+    enemies = [];
+    diamonds = [];
+    tanks = [];
+    walkers = [];
+    mechs = [];
+    powerUps = [];
+    tunnels = [];
+    debris = [];
+    explosions = [];
+    auraSparks = [];
+    auraShockwaves = [];
+    cloudParticles = [];
+    reflectionEffects = [];
+    // Ensure gold star / player positions are inside canvas
+    player.x = Math.max(player.size/2, Math.min(canvas.width - player.size/2, player.x));
+    player.y = Math.max(player.size/2, Math.min(canvas.height - player.size/2, player.y));
+    goldStar.x = Math.max(100, Math.min(canvas.width - 100, goldStar.x));
+    goldStar.y = Math.max(100, Math.min(canvas.height - 100, goldStar.y));
+    wave = 0;
+    spawnWave(wave);
+  }
+}
+
+// Draw current cinematic scene based on index
+function drawCurrentCinematic(now) {
+  const idx = cinematic.sceneIndex;
+  const start = cinematic.sceneStart || now;
+  const elapsed = Math.max(0, now - start);
+  const duration = cinematic.sceneDurations[idx] || 4000;
+  const p = Math.max(0, Math.min(1, elapsed / duration));
+  const t = elapsed;
+
+  switch (idx) {
+    case 0:
+      drawLaunchBayScene(t, p);
+      break;
+    case 1:
+      drawEnemyScene(t, p);
+      break;
+    case 2:
+      drawDiamondDestructionScene(t, p);
+      break;
+    case 3:
+      drawMotherDiamondAndEnemiesScene(t, p);
+      break;
+    default:
+      // fallback: black
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  // Advance to next scene when time elapses
+  if (elapsed >= duration) {
+    advanceCinematic();
+  }
+}
+
+// Main game loop
+function gameLoop(now) {
+  // request next frame at top to keep loop even if this frame errors
+  requestAnimationFrame(gameLoop);
+
+  frameCount++;
+
+  if (cinematic.playing) {
+    drawCurrentCinematic(now || Date.now());
+    return;
+  }
+
+  // Gameplay update
+  // Ensure canvas is available & sized
+  if (!canvas || !ctx) {
+    if (!ensureCanvas()) return;
+  }
+
+  // Clear and draw background
+  drawBackground(wave + 1);
+
+  // Update systems
+  updatePlayerMovement();
+  handleShooting();
+
+  updateBullets();
+  updateLightning();
+  updateExplosions();
+  updatePowerUps();
+  updateTunnels();
+  updateDebris();
+  updateCloudParticles();
+
+  // Enemy updates
+  updateSimpleEnemies();
+  updateTanks();
+  updateWalkers();
+  updateMechs();
+
+  // Diamonds
+  for (let i = diamonds.length - 1; i >= 0; i--) {
+    updateDiamond(diamonds[i]);
+  }
+
+  // Gold star update and aura
+  updateGoldStar();
+  updateGoldStarAura();
+
+  // Collisions
+  checkBulletCollisions();
+
+  // Add queued minions from bosses
+  if (minionsToAdd && minionsToAdd.length) {
+    minionsToAdd.forEach(m => enemies.push(m));
+    minionsToAdd = [];
+  }
+
+  tryAdvanceWave();
+
+  // Draw order
+  if (cloudParticles.length) drawClouds();
+  drawTunnels();
+  drawDiamonds();
+  drawEnemies();
+  drawTanks();
+  drawWalkers();
+  drawMechs();
+  drawDebris();
+  drawBullets();
+  drawLightning();
+  drawExplosions();
+  drawPowerUps();
+
+  // Aura visuals and connections
+  drawGoldStarAura(ctx);
+  drawGoldStar();
+
+  drawRedPunchEffects();
+  updateAndDrawReflectionEffects();
+
+  // UI last so it's on top
+  drawUI();
+
+  // Game over check
+  if (!gameOver && player.health <= 0) {
+    gameOver = true;
+    player.lives--;
+    if (player.lives > 0) {
+      // respawn player
+      player.health = player.maxHealth;
+      player.x = canvas.width / 2;
+      player.y = canvas.height / 2;
+      gameOver = false;
+    } else {
+      saveHighScoreIfNeeded();
+      saveHighScoresOnGameOver();
+      // simple game over overlay
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "white";
+      ctx.font = "36px 'Orbitron', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("GAME OVER", canvas.width/2, canvas.height/2 - 20);
+      ctx.font = "18px 'Orbitron', monospace";
+      ctx.fillText(`SCORE: ${score}`, canvas.width/2, canvas.height/2 + 20);
+      ctx.restore();
+      // stop further updates (you can change to restart after keypress)
+      // We'll not call requestAnimationFrame here because it's already scheduled at top,
+      // but we won't update gameplay anymore since gameOver remains true.
+    }
+  }
+}
+
+// Expose a minimal restart function (optional)
+function restartGame() {
+  score = 0;
+  wave = 0;
+  gameOver = false;
+  recordedScoreThisRun = false;
+  bullets = [];
+  lightning = [];
+  enemies = [];
+  diamonds = [];
+  tanks = [];
+  walkers = [];
+  mechs = [];
+  powerUps = [];
+  tunnels = [];
+  debris = [];
+  explosions = [];
+  auraSparks = [];
+  auraShockwaves = [];
+  cloudParticles = [];
+  reflectionEffects = [];
+  player.health = player.maxHealth;
+  player.lives = 3;
+  player.x = canvas.width/2;
+  player.y = canvas.height/2;
+  goldStar.alive = true;
+  goldStar.health = goldStar.maxHealth;
+  goldStar.x = canvas.width/4;
+  goldStar.y = canvas.height/2;
+  goldStarAura.level = 0;
+  spawnWave(wave);
+}
+
+// If init already ran and startCutscene was called, gameLoop will be scheduled by init.
+// Otherwise, ensure a frame will be scheduled.
+if (!cinematic.playing) {
+  // If init was run and cinematic already finished, ensure the first wave is present.
+  if (wave === 0 && enemies.length === 0 && diamonds.length === 0 && tanks.length === 0 && walkers.length === 0 && mechs.length === 0) {
+    spawnWave(wave);
+  }
+}
