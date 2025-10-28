@@ -530,7 +530,7 @@ function drawDiamondDestructionScene(t, p) {
     drawTextBox([
       'Commander: "The Mother Diamond has been',
       'destroying all the Green Squares on Earth.',
-      'We\\'re the last ones left."'
+      'We\'re the last ones left."'
     ], 50, canvas.height - 170, canvas.width - 100, 26, "left", reveal);
   }
 }
@@ -738,7 +738,7 @@ function makeCutsceneScenes() {
       drawGoldStarLaunch(t, p);
       const reveal = Math.max(0, Math.min(1, p * 1.6));
       drawTextBox([
-        'Pilot: "I\\'m going!"',
+        'Pilot: "I\'m going!"',
         'Commander: "Believe in the Gold Star!"'
       ], 50, canvas.height - 140, 520, 24, "left", reveal);
     }
