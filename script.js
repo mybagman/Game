@@ -2116,11 +2116,14 @@ let cinematic = {
   playerName: "Pilot"
 };
 
+// Typing renderer for cinematic text: reveal (0..1)
 function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal = 1) {
+  // Combine lines including newlines to compute total characters to reveal
   const joined = lines.join("\n");
   const totalChars = joined.length;
   const revealChars = Math.floor(totalChars * Math.max(0, Math.min(1, reveal)));
 
+  // Build visible lines up to revealChars
   let remaining = revealChars;
   const visibleLines = [];
   for (let i = 0; i < lines.length; i++) {
@@ -2136,24 +2139,30 @@ function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal 
     }
   }
 
+  // Cursor / caret blinking (sped up for snappier typing)
   const showCursor = revealChars < totalChars && (Math.floor(Date.now() / 200) % 2 === 0);
 
   ctx.save();
+  // Futuristic CPU style textbox
   ctx.font = "18px 'Courier New', monospace";
   const padding = 14;
   const h = visibleLines.length * lineHeight + padding*2;
+  // Slight translucent panel with subtle outline
   ctx.fillStyle = "rgba(5,10,15,0.88)";
   ctx.fillRect(x, y - padding, maxW, h);
+  // Outer glow border
   ctx.strokeStyle = "rgba(40,200,255,0.12)";
   ctx.lineWidth = 2;
   roundRect(ctx, x + 0.5, y - padding + 0.5, maxW - 1, h - 1, 8);
   ctx.stroke();
 
+  // Typing color and glow
   ctx.fillStyle = "rgba(140,240,255,0.95)";
   ctx.textAlign = align;
   ctx.shadowColor = "rgba(0,200,255,0.25)";
   ctx.shadowBlur = 8;
 
+  // Render each visible line; if a line is partially revealed we add a cursor after it
   let drawX = x + 12;
   if (align === "center") drawX = x + maxW / 2;
   else if (align === "right") drawX = x + maxW - 12;
@@ -2163,11 +2172,14 @@ function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal 
     ctx.fillText(line, drawX, y + (i+1)*lineHeight);
   }
 
+  // If typing is mid-line, draw a small cursor after the last visible character
   if (showCursor) {
+    // find last non-empty rendered line index (prefer last line)
     let li = visibleLines.length - 1;
     while (li >= 0 && visibleLines[li] === "") li--;
     if (li >= 0) {
       const textBefore = visibleLines[li];
+      // measure width using same font
       ctx.shadowBlur = 0;
       ctx.fillStyle = "rgba(140,240,255,0.95)";
       const metrics = ctx.measureText(textBefore);
@@ -2175,8 +2187,10 @@ function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal 
       if (align === "center") cursorX = drawX - metrics.width/2 + metrics.width;
       else if (align === "right") cursorX = drawX - metrics.width;
       const cursorY = y + (li+1)*lineHeight - 14;
+      // block cursor
       ctx.fillRect(cursorX + 2, cursorY, 8, 14);
     } else {
+      // No chars yet: draw cursor at start of box
       const cursorX = x + 18;
       const cursorY = y + lineHeight - 14;
       ctx.fillRect(cursorX, cursorY, 8, 14);
@@ -2186,10 +2200,13 @@ function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal 
   ctx.restore();
 }
 
+// Improved launch bay with hoses that disconnect as p -> 1
 function drawLaunchBayScene(t, p) {
+  // p is scene progress 0..1
   ctx.fillStyle = "#000814";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   
+  // Starfield / hangar atmosphere
   for (let i = 0; i < 140; i++) {
     const x = (i * 137) % canvas.width;
     const y = (i * 241) % canvas.height;
@@ -2198,14 +2215,17 @@ function drawLaunchBayScene(t, p) {
     ctx.fillRect(x, y, 2, 2);
   }
 
+  // Hangar interior: big panel with gradient
   const hangarX = canvas.width * 0.15, hangarW = canvas.width * 0.7;
   const hangarY = canvas.height * 0.28, hangarH = canvas.height * 0.52;
+  // subtle gradient
   const g = ctx.createLinearGradient(hangarX, hangarY, hangarX, hangarY+hangarH);
   g.addColorStop(0, "#0f1721");
   g.addColorStop(1, "#121827");
   ctx.fillStyle = g;
   ctx.fillRect(hangarX, hangarY, hangarW, hangarH);
 
+  // Panels and beams
   ctx.strokeStyle = "#1e2b3a";
   ctx.lineWidth = 2;
   for (let i = 0; i < 12; i++) {
@@ -2216,6 +2236,7 @@ function drawLaunchBayScene(t, p) {
     ctx.stroke();
   }
 
+  // Ground grid subtle
   ctx.strokeStyle = "rgba(50,80,100,0.08)";
   ctx.lineWidth = 1;
   for (let j = 0; j < 10; j++) {
@@ -2226,15 +2247,17 @@ function drawLaunchBayScene(t, p) {
     ctx.stroke();
   }
 
+  // Central Green Square (launching unit)
   const squareSize = 60;
   const squareX = canvas.width / 2 - squareSize / 2;
   const squareY = canvas.height / 2 - squareSize / 2;
 
+  // Add hoses connecting left/right anchors to square; they detach as p increases
   const leftAnchor = { x: hangarX + 40, y: squareY + squareSize / 2 - 6 };
   const rightAnchor = { x: hangarX + hangarW - 40, y: squareY + squareSize / 2 - 6 };
-  const disconnectProgress = Math.max(0, Math.min(1, p * 1.6));
+  const disconnectProgress = Math.max(0, Math.min(1, p * 1.6)); // hoses detach earlier
   const hoseFade = 1 - disconnectProgress;
-  const hoseRetract = disconnectProgress * 60;
+  const hoseRetract = disconnectProgress * 60; // how much they retract towards anchors
 
   function drawHose(from, to, seed) {
     ctx.save();
@@ -2244,12 +2267,14 @@ function drawLaunchBayScene(t, p) {
     ctx.beginPath();
     const ctrlX = (from.x + to.x) / 2 + Math.sin((t||0)*0.002 + seed) * 30 * (1 - disconnectProgress);
     const ctrlY = (from.y + to.y) / 2 + Math.cos((t||0)*0.002 + seed) * 10 * (1 - disconnectProgress);
+    // retract end toward anchor as it disconnects
     const targetX = to.x + (from.x - to.x) * (hoseRetract / 120);
     const targetY = to.y + (from.y - to.y) * (hoseRetract / 120);
     ctx.moveTo(from.x, from.y);
     ctx.quadraticCurveTo(ctrlX, ctrlY, targetX, targetY);
     ctx.stroke();
 
+    // little clamp at near-square end which fades/flies off
     const clampProgress = Math.min(1, disconnectProgress * 1.6);
     ctx.fillStyle = `rgba(80,240,180,${0.9 * hoseFade})`;
     const clampX = targetX + (Math.random() - 0.5) * 2;
@@ -2260,9 +2285,11 @@ function drawLaunchBayScene(t, p) {
     ctx.restore();
   }
 
+  // draw two hoses from left and right
   drawHose({ x: squareX + 8, y: squareY + squareSize/2 }, leftAnchor, 1);
   drawHose({ x: squareX + squareSize - 8, y: squareY + squareSize/2 }, rightAnchor, 2);
 
+  // Sparks and small cable bits when nearly disconnected
   if (disconnectProgress > 0.6) {
     for (let i = 0; i < 6; i++) {
       const bx = squareX + (Math.random() - 0.5) * squareSize * 1.2;
@@ -2272,27 +2299,34 @@ function drawLaunchBayScene(t, p) {
     }
   }
 
+  // green square glow
   ctx.shadowBlur = 30 * (1 - disconnectProgress * 0.6);
   ctx.shadowColor = "lime";
   ctx.fillStyle = "lime";
   ctx.fillRect(squareX, squareY, squareSize, squareSize);
   ctx.shadowBlur = 0;
 
+  // New: as hoses disconnect the green square activates with a red eye that scans left->right
+  // eye appears gradually as disconnectProgress increases
   const eyeAppear = Math.max(0, Math.min(1, disconnectProgress * 1.4));
   if (eyeAppear > 0.02) {
     const innerPad = 8;
     const travelWidth = squareSize - innerPad * 2;
-    const eyeProgress = Math.max(0, Math.min(1, (disconnectProgress - 0.05) / 0.95));
+    const eyeProgress = Math.max(0, Math.min(1, (disconnectProgress - 0.05) / 0.95)); // start slightly after
     const eyeX = squareX + innerPad + travelWidth * eyeProgress;
     const eyeY = squareY + squareSize / 2;
     ctx.save();
+    // glow and scanner effect
     ctx.shadowBlur = 18 * eyeAppear;
+    // Changed scanning eye colour to yellow (no pupil)
     ctx.shadowColor = "rgba(255,220,80,0.9)";
     ctx.fillStyle = `rgba(255,220,80,${0.6 + eyeAppear * 0.4})`;
     ctx.beginPath();
     ctx.arc(eyeX, eyeY, 8 + 4 * eyeAppear, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
+    // pupil removed per user request: keep only glow (no black pupil)
+    // small scanning beam when fully active
     if (eyeProgress > 0.6) {
       ctx.globalAlpha = Math.min(0.6, (eyeProgress - 0.6) / 0.4 * 0.6);
       ctx.fillStyle = "rgba(255,220,80,0.12)";
@@ -2302,6 +2336,7 @@ function drawLaunchBayScene(t, p) {
     ctx.restore();
   }
 
+  // Add Year 2050 and location text (slightly dimmer)
   ctx.fillStyle = "rgba(255,255,255,0.8)";
   ctx.font = "24px Arial";
   ctx.textAlign = "center";
@@ -2343,6 +2378,7 @@ function drawEnemyScene(t, p) {
   ctx.stroke();
   ctx.restore();
   
+  // Green squares being destroyed
   for (let i = 0; i < 5; i++) {
     const xOffset = Math.sin(t * 0.001 + i) * 100;
     const yPos = canvas.height * 0.6 + i * 40;
@@ -2352,6 +2388,7 @@ function drawEnemyScene(t, p) {
     ctx.fillStyle = `rgba(0,255,0,${(0.6 - destruction * 0.6) + Math.sin(t * 0.002 + i) * 0.3})`;
     ctx.fillRect(canvas.width * 0.3 + xOffset + i * 80, yPos, size * (1 - destruction * 0.5), size * (1 - destruction * 0.5));
     
+    // Destruction particles
     if (destruction > 0.3) {
       for (let j = 0; j < 3; j++) {
         const px = canvas.width * 0.3 + xOffset + i * 80 + (Math.random() - 0.5) * 40 * destruction;
@@ -2377,10 +2414,13 @@ function drawEnemyScene(t, p) {
   }
 }
 
+// New cinematic helper: diamond destroying green squares scene (used for the "Mother Diamond has been destroying..." line)
 function drawDiamondDestructionScene(t, p) {
+  // background
   ctx.fillStyle = "#040812";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // stars
   for (let i = 0; i < 120; i++) {
     const x = (i * 97) % canvas.width;
     const y = (i * 199) % canvas.height;
@@ -2388,6 +2428,7 @@ function drawDiamondDestructionScene(t, p) {
     ctx.fillRect(x, y, 1, 1);
   }
 
+  // mother diamond center (big and ominous)
   const centerX = canvas.width * 0.6;
   const centerY = canvas.height * 0.45;
   ctx.save();
@@ -2410,6 +2451,7 @@ function drawDiamondDestructionScene(t, p) {
   ctx.restore();
   ctx.shadowBlur = 0;
 
+  // Green squares being pulled and destroyed
   for (let i = 0; i < 10; i++) {
     const tOff = (t||0)*0.001 + i;
     const baseX = canvas.width * 0.2 + i * (canvas.width*0.6/10);
@@ -2420,6 +2462,7 @@ function drawDiamondDestructionScene(t, p) {
     const y = baseY + (centerY - baseY) * pull + (Math.random()-0.5)*10*pull;
     ctx.fillStyle = `rgba(0,200,0,${0.6 - pull*0.5})`;
     ctx.fillRect(x - size/2, y - size/2, Math.max(4,size), Math.max(4,size));
+    // destruction sparks when pulled close
     if (pull > 0.6) {
       for (let j=0;j<3;j++){
         ctx.fillStyle = `rgba(0,255,120,${0.6 - pull*0.4})`;
@@ -2428,10 +2471,13 @@ function drawDiamondDestructionScene(t, p) {
     }
   }
 
+  // Add cinematic: diamond powers up and fires a large laser blast when the commander line plays
+  // Bias the reveal to make the text appear earlier; we also use p to control charge/fire timing
   const chargeStart = 0.12;
-  const chargePhase = Math.max(0, Math.min(1, (p - chargeStart) / (1 - chargeStart)));
+  const chargePhase = Math.max(0, Math.min(1, (p - chargeStart) / (1 - chargeStart))); // 0..1
   if (chargePhase > 0.05) {
     const charge = Math.min(1, chargePhase * 1.6);
+    // pulsing ring around diamond to show power build
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.strokeStyle = `rgba(255,80,80,${0.55 * charge})`;
@@ -2442,14 +2488,19 @@ function drawDiamondDestructionScene(t, p) {
     ctx.restore();
   }
 
+  // Fire the beam when chargePhase passes threshold
   if (chargePhase > 0.65) {
     const fireAlpha = Math.min(1, (chargePhase - 0.65) / 0.35);
+    // large vertical laser beam (visual)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
+    // core
     ctx.fillStyle = `rgba(255,40,40,${0.85 * fireAlpha})`;
     ctx.fillRect(centerX - 6, 0, 12, canvas.height);
+    // outer glow
     ctx.fillStyle = `rgba(255,120,80,${0.6 * fireAlpha})`;
     ctx.fillRect(centerX - 24, 0, 48, canvas.height);
+    // beam flare near diamond
     ctx.shadowBlur = 60 * fireAlpha;
     ctx.shadowColor = 'rgba(255,140,100,0.9)';
     ctx.beginPath();
@@ -2459,6 +2510,7 @@ function drawDiamondDestructionScene(t, p) {
     ctx.shadowBlur = 0;
     ctx.restore();
 
+    // small debris particles streaking away
     for (let i = 0; i < 8 * Math.ceil(fireAlpha*2); i++) {
       const sx = centerX + (Math.random()-0.5)*80;
       const sy = centerY + (Math.random()-0.5)*40;
@@ -2467,7 +2519,9 @@ function drawDiamondDestructionScene(t, p) {
     }
   }
 
+  // overlay text - use typing effect reveal based on p, typed faster and held longer
   if (p > 0.12) {
+    // bias reveal: speed up typing (1.9x), ensure it appears earlier
     const reveal = Math.max(0, Math.min(1, (p - 0.12) / (1 - 0.12) * 1.9));
     drawTextBox([
       'Commander: "The Mother Diamond has been',
@@ -2477,13 +2531,16 @@ function drawDiamondDestructionScene(t, p) {
   }
 }
 
+// New cinematic helper: mother diamond and enemies scene (used for the "Pilot, you must reach..." line)
 function drawMotherDiamondAndEnemiesScene(t, p) {
+  // dim background
   ctx.fillStyle = "#02010a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // Distant enemies flying past like an invasion - many small silhouettes streaking across
   const invasionCount = 24;
   for (let i = 0; i < invasionCount; i++) {
-    const speed = 0.6 + (i % 4) * 0.2 + p * 2.0;
+    const speed = 0.6 + (i % 4) * 0.2 + p * 2.0; // speed increases with approach
     const x = ((t||0) * 0.08 * speed + i * 350) % (canvas.width * 1.6) - canvas.width * 0.3 - (p * canvas.width * 0.8);
     const y = (i * 37) % canvas.height;
     const size = 8 + (i % 3) * 4 + p * 6;
@@ -2491,10 +2548,12 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.fillStyle = `rgba(200,60,60,${alpha})`;
+    // tiny streak
     ctx.fillRect(x, y, Math.max(2, size * (1 + p*1.5)), Math.max(2, size*0.6));
     ctx.restore();
   }
 
+  // distant mother diamond (smaller than previous scene but with enemies orbiting)
   const centerX = canvas.width * 0.55;
   const centerY = canvas.height * 0.35;
   ctx.save();
@@ -2514,12 +2573,15 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
   ctx.restore();
   ctx.shadowBlur = 0;
 
+  // enemies around the diamond (triangles and red squares)
   for (let i = 0; i < 6; i++) {
     const angle = (i / 6) * Math.PI*2 + (t||0)*0.0006 + p*1.2;
     const dist = 160 + Math.sin((t||0)*0.001 + i)*20 + p*40;
     const ex = centerX + Math.cos(angle) * dist;
     const ey = centerY + Math.sin(angle) * dist;
+    // alternate shape
     if (i % 2 === 0) {
+      // triangle
       const size = 28 + Math.sin((t||0)*0.002 + i)*4;
       ctx.fillStyle = "rgba(100,200,255,0.9)";
       ctx.beginPath();
@@ -2528,6 +2590,7 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
       ctx.lineTo(ex + size/2, ey + size/2);
       ctx.closePath();
       ctx.fill();
+      // brief red charge dot near tip for dramatic effect
       const charge = Math.min(1, Math.max(0, p + (Math.sin((t||0)*0.005 + i)*0.5 + 0.5)));
       if (charge > 0.6) {
         const cp = (charge - 0.6) / 0.4;
@@ -2538,9 +2601,11 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
         ctx.fill();
       }
     } else {
+      // red square
       const size = 26 + Math.cos((t||0)*0.002 + i)*3;
       ctx.fillStyle = "rgba(255,60,60,0.95)";
       ctx.fillRect(ex - size/2, ey - size/2, size, size);
+      // green sparks to show hostility
       if (p > 0.4) {
         ctx.fillStyle = `rgba(0,255,0,${0.3 + (Math.random()*0.4)})`;
         ctx.fillRect(ex + (Math.random()-0.5)*10, ey + (Math.random()-0.5)*10, 3, 3);
@@ -2548,6 +2613,7 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
     }
   }
 
+  // caption - use typing reveal based on p, sped up
   const reveal = Math.max(0, Math.min(1, p * 1.9));
   drawTextBox([
     `Commander: "${cinematic.playerName || "Pilot"}, you must reach the`,
@@ -2577,10 +2643,11 @@ function drawGoldStarLaunch(t, p) {
   const gsY = startY + (endY - startY) * p;
   const gsSize = 40 + p * 60;
   
+  // Also animate the green square to blast off alongside the gold star
   const greenStartX = startX - 90;
   const greenEndX = endX - 60;
   const greenX = greenStartX + (greenEndX - greenStartX) * Math.max(0, Math.min(1, (p + 0.05)));
-  const greenY = startY - (p * 80);
+  const greenY = startY - (p * 80); // slightly upward trajectory
   const greenSize = 36 + p * 36;
 
   if (p > 0.4) {
@@ -2598,6 +2665,7 @@ function drawGoldStarLaunch(t, p) {
       ctx.fill();
     }
     
+    // gold blast
     ctx.shadowBlur = 40;
     ctx.shadowColor = "orange";
     ctx.fillStyle = `rgba(255,200,0,${blastIntensity})`;
@@ -2606,6 +2674,7 @@ function drawGoldStarLaunch(t, p) {
     ctx.fill();
     ctx.shadowBlur = 0;
 
+    // green square blast (less intense, green/orange mix)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 12; i++) {
@@ -2620,6 +2689,7 @@ function drawGoldStarLaunch(t, p) {
     ctx.restore();
   }
   
+  // draw gold star
   ctx.save();
   ctx.translate(gsX, gsY);
   ctx.shadowBlur = 30 + p * 20;
@@ -2639,6 +2709,7 @@ function drawGoldStarLaunch(t, p) {
   ctx.fill();
   ctx.restore();
 
+  // draw green square launching next to it
   ctx.save();
   ctx.translate(greenX, greenY);
   ctx.shadowBlur = 20 + p * 10;
@@ -2655,9 +2726,11 @@ function drawGoldStarLaunch(t, p) {
   }
 }
 
+// Create cutscene scenes with typing and increased display time for the "Believe in the Gold Star!" script
 function makeCutsceneScenes() {
   const scenes = [];
 
+  // Increased duration for hangar so hoses detaching are visible
   scenes.push({
     duration: 3500,
     draw: (t, p) => {
@@ -2665,6 +2738,8 @@ function makeCutsceneScenes() {
     }
   });
 
+  // Scene 2: when commander speaks about Mother Diamond destroying green squares -> show diamond-destruction scene
+  // Increase duration so text stays on screen longer
   scenes.push({
     duration: 6500,
     draw: (t, p) => {
@@ -2672,6 +2747,7 @@ function makeCutsceneScenes() {
     }
   });
 
+  // Scene 3: when the commander says the player must reach the Mother Diamond -> show mother diamond + enemies
   scenes.push({
     duration: 5500,
     draw: (t, p) => {
@@ -2679,11 +2755,13 @@ function makeCutsceneScenes() {
     }
   });
 
+  // Scene 4: Gold Star launching + dialog (kept longer so final "Believe..." remains visible longer)
   scenes.push({
     duration: 7000,
     draw: (t, p) => {
       drawGoldStarLaunch(t, p);
       
+      // Show dialog typed in realtime using reveal biased to complete earlier for readability (faster typing)
       const reveal = Math.max(0, Math.min(1, p * 1.6));
       drawTextBox([
         'Pilot: "I\'m going!"',
@@ -2700,69 +2778,84 @@ function makeCutsceneScenes() {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
       if (p > 0.4) {
-        const countdown = Math.ceil((1 - Math.max(0, Math.min(1, p))) * 3);
-        ctx.save();
-        ctx.fillStyle = "rgba(220,240,255,0.95)";
-        ctx.font = "64px 'Orbitron', Arial";
+        const countdown = Math.ceil(2.5 - (p * 2.5));
+        ctx.fillStyle = "white";
+        ctx.font = "48px Arial";
         ctx.textAlign = "center";
-        ctx.fillText(countdown.toString(), canvas.width / 2, canvas.height / 2);
-        ctx.restore();
+        ctx.fillText("WAVE 1 STARTING IN", canvas.width / 2, canvas.height / 2 - 40);
+        ctx.font = "72px Arial";
+        ctx.fillStyle = countdown <= 1 ? "red" : "yellow";
+        ctx.fillText(countdown.toString(), canvas.width / 2, canvas.height / 2 + 40);
+        ctx.font = "32px Arial";
+        ctx.fillStyle = "cyan";
+        ctx.fillText("GET READY FOR BATTLE", canvas.width / 2, canvas.height / 2 + 100);
       }
     }
   });
 
-  // Return the constructed scenes
   return scenes;
 }
 
-// Minimal startCutscene implementation (plays scenes sequentially then starts the game)
+let cinematicScenes = [];
+let cinematicIndex = 0;
+let cinematicStartTime = 0;
+
 function startCutscene() {
-  const scenes = makeCutsceneScenes();
-  if (!scenes || scenes.length === 0) {
-    // Nothing to play — proceed to spawn wave and start game
+  const name = typeof prompt === 'function' ? (prompt("Enter your pilot name:", "Pilot") || "Pilot") : "Pilot";
+  cinematic.playerName = name;
+  cinematic.playing = true;
+  cinematicScenes = makeCutsceneScenes();
+  cinematicIndex = 0;
+  cinematicStartTime = performance.now();
+
+  if (!cinematicScenes || cinematicScenes.length === 0) {
     cinematic.playing = false;
-    spawnWave(wave);
-    requestAnimationFrame(gameLoop);
+    endCutscene();
     return;
   }
 
-  cinematic.playing = true;
-  let sceneIndex = 0;
-  let sceneStart = performance.now();
-
-  function frame(now) {
-    if (!cinematic.playing) return;
-
-    const scene = scenes[sceneIndex];
-    const elapsed = now - sceneStart;
-    const p = Math.max(0, Math.min(1, elapsed / scene.duration));
-
-    if (!ensureCanvas()) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    try {
-      scene.draw(now, p);
-    } catch (err) {
-      console.warn("Cutscene draw error:", err);
-      cinematic.playing = false;
-      spawnWave(wave);
-      requestAnimationFrame(gameLoop);
-      return;
-    }
-
-    if (elapsed >= scene.duration) {
-      sceneIndex++;
-      sceneStart = now;
-      if (sceneIndex >= scenes.length) {
-        cinematic.playing = false;
-        spawnWave(wave);
-        requestAnimationFrame(gameLoop);
-        return;
-      }
-    }
-    requestAnimationFrame(frame);
-  }
-
-  requestAnimationFrame(frame);
+  requestAnimationFrame(cinematicTick);
 }
 
-// ========== End of file ==========
+function cinematicTick(now) {
+  if (!cinematic.playing) return;
+
+  // Guard: ensure scene exists
+  const scene = cinematicScenes[cinematicIndex];
+  if (!scene) {
+    cinematic.playing = false;
+    endCutscene();
+    return;
+  }
+
+  let elapsedBefore = 0;
+  for (let i = 0; i < cinematicIndex; i++) elapsedBefore += cinematicScenes[i].duration;
+  const sceneElapsed = now - (cinematicStartTime + elapsedBefore);
+  const progress = Math.max(0, Math.min(1, sceneElapsed / scene.duration));
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  scene.draw(now, progress);
+
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
+  ctx.font = "14px Arial";
+  ctx.textAlign = "right";
+  ctx.fillText("Press ESC to skip intro", canvas.width - 20, 30);
+
+  if (sceneElapsed >= scene.duration) {
+    cinematicIndex++;
+    if (cinematicIndex >= cinematicScenes.length) {
+      cinematic.playing = false;
+      endCutscene();
+      return;
+    }
+  }
+
+  requestAnimationFrame(cinematicTick);
+}
+
+window.addEventListener("keydown", e => {
+  if (e.key === "Escape" && cinematic.playing) {
+    cinematic.playing = false;
+    endCutscene();
+  }
+});
