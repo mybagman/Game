@@ -1513,7 +1513,12 @@ function spawnDiamondEnemy() {
     gravitonCharge: 0,
     vulnerable: false,
     vulnerableTimer: 0,
-    pulledEnemies: []
+    pulledEnemies: [],
+    // new properties for wave-11 release ability
+    releaseTimer: 0,
+    releaseChargeNeeded: 600, // frames to charge before auto-release
+    releaseCooldown: 0,
+    releaseCooldownMax: 900 // frames between forced releases (if needed)
   });
 }
 
@@ -1606,6 +1611,122 @@ function spawnDebris(x, y, count = 5) {
   }
 }
 
+// -------------------- Tunnel collision & diamond release helpers --------------------
+
+// Axis-Aligned Bounding Box collision helper (works for rectangles; for circles adjust as needed)
+function isAABBColliding(ax, ay, aw, ah, bx, by, bw, bh) {
+  return !(ax + aw < bx || ax > bx + bw || ay + ah < by || ay > by + bh);
+}
+
+// Convert an entity to a bounding rectangle and test tunnel collisions
+function handleTunnelCollisionForEntity(entity, tunnel) {
+  // define entity bounding box
+  const ew = entity.width || entity.size || 20;
+  const eh = entity.height || entity.size || 20;
+  const ex = entity.x - (entity.width ? entity.width/2 : (entity.size ? entity.size/2 : 10));
+  const ey = entity.y - (entity.height ? entity.height/2 : (entity.size ? entity.size/2 : 10));
+
+  if (!isAABBColliding(ex, ey, ew, eh, tunnel.x, tunnel.y, tunnel.width, tunnel.height)) return false;
+
+  // Simple response: push entity out along smallest penetration axis
+  const leftOverlap = (ex + ew) - tunnel.x;
+  const rightOverlap = (tunnel.x + tunnel.width) - ex;
+  const topOverlap = (ey + eh) - tunnel.y;
+  const bottomOverlap = (tunnel.y + tunnel.height) - ey;
+
+  const minOverlap = Math.min(leftOverlap, rightOverlap, topOverlap, bottomOverlap);
+
+  if (minOverlap === leftOverlap) {
+    entity.x = tunnel.x - ew/2 - 1;
+  } else if (minOverlap === rightOverlap) {
+    entity.x = tunnel.x + tunnel.width + ew/2 + 1;
+  } else if (minOverlap === topOverlap) {
+    entity.y = tunnel.y - eh/2 - 1;
+  } else {
+    entity.y = tunnel.y + tunnel.height + eh/2 + 1;
+  }
+
+  // Optionally apply a penalty to the entity's movement
+  if (entity.vx !== undefined) {
+    entity.vx *= 0.4;
+    entity.vy *= 0.4;
+  } else {
+    entity.vx = 0;
+    entity.vy = 0;
+  }
+
+  // return true meaning collision handled
+  return true;
+}
+
+// Attach and detach helpers for diamonds
+function attachEnemyToDiamond(diamond, enemy) {
+  enemy.attached = true;
+  enemy.attachedTo = diamond;
+  enemy.vx = 0;
+  enemy.vy = 0;
+  enemy.canReattach = false; // ensure it isn't reattached immediately again during the attach moment
+  enemy.attachOffset = { x: enemy.x - diamond.x, y: enemy.y - diamond.y };
+  diamond.attachments.push(enemy);
+  // when attached, ensure enemy is not in enemies array (this is handled by caller)
+}
+
+function detachAndLaunchEnemy(diamond, enemy, launchSpeed = 12) {
+  // Mark detached
+  enemy.attached = false;
+  enemy.attachedTo = null;
+  // compute launch direction away from diamond
+  const dx = (enemy.x) - (diamond.x);
+  const dy = (enemy.y) - (diamond.y);
+  const mag = Math.hypot(dx, dy) || 1;
+  enemy.vx = (dx / mag) * launchSpeed;
+  enemy.vy = (dy / mag) * launchSpeed;
+  // give a short window before it can be reattached
+  enemy.canReattach = false;
+  setTimeout(() => { enemy.canReattach = true; }, 1200); // ~1.2s cooldown before reattach allowed
+  // push enemy back to enemies array so updateEnemy AI will resume
+  enemies.push(enemy);
+}
+
+function diamondReleaseAttachedEnemies(diamond) {
+  if (!diamond || !diamond.attachments || diamond.attachments.length === 0) return;
+
+  // Mark diamond vulnerable for duration
+  diamond.vulnerable = true;
+  diamond.vulnerableTimer = 360; // frames (~6s at 60fps) - tune as needed
+
+  // Launch all attached enemies outward
+  const attachedCopy = diamond.attachments.slice();
+  attachedCopy.forEach(a => {
+    // remove from attachments
+    const idx = diamond.attachments.indexOf(a);
+    if (idx >= 0) diamond.attachments.splice(idx, 1);
+    // ensure they are positioned outside diamond for launching
+    a.x = diamond.x + (Math.cos(a.orbitAngle || 0) * (diamond.size/2 + 20));
+    a.y = diamond.y + (Math.sin(a.orbitAngle || 0) * (diamond.size/2 + 20));
+    // detach and launch
+    detachAndLaunchEnemy(diamond, a, 12);
+    // reset any orbitAngle so they don't teleport incorrectly
+    delete a.orbitAngle;
+    // restore other flags
+    a.speed = a.speed || 1.5;
+    a.state = 'launched';
+  });
+
+  // clear pulledEnemies list and other pull state
+  diamond.pulledEnemies = [];
+
+  // optional explosion/visual
+  createExplosion(diamond.x, diamond.y, "white");
+}
+
+// -------------------- Background drawing (Earth orbit for first 11 waves) --------------------
+
+let backgroundOffset = 0;
+
+// (remaining functions for background and other systems are below, unchanged)
+// ... (we reuse existing drawBackground etc.)
+
 // -------------------- Enemy updates --------------------
 
 function updateBoss(boss) {
@@ -1665,15 +1786,25 @@ function updateMotherCore(e) {
 // updateDiamond, updateTanks, updateWalkers, updateMechs (with ground-only movement constraints)
 
 function updateDiamond(d) {
-  // (unchanged from provided)
+  // charge graviton as before
   d.gravitonTimer = (d.gravitonTimer || 0) + 1;
 
-  if (d.gravitonTimer >= 600 && !d.gravitonActive) {
-    d.gravitonActive = true;
-    d.gravitonCharge = 0;
-    d.pulledEnemies = [];
-    d.gravitonTimer = 0;
+  // Wave 11 special: if this diamond is present in wave index 10 (wave variable is global)
+  // increment release timer (automatic release ability)
+  if (wave === 10) {
+    d.releaseTimer = (d.releaseTimer || 0) + 1;
+    // if there are attachments and we've charged enough, release them
+    if (d.releaseTimer >= d.releaseChargeNeeded && d.attachments && d.attachments.length > 0 && d.releaseCooldown <= 0) {
+      diamondReleaseAttachedEnemies(d);
+      d.releaseTimer = 0;
+      d.releaseCooldown = d.releaseCooldownMax;
+    }
+  } else {
+    // reset in other waves
+    d.releaseTimer = 0;
+    d.releaseCooldown = d.releaseCooldown || 0;
   }
+  if (d.releaseCooldown > 0) d.releaseCooldown--;
 
   if (d.gravitonActive) {
     d.gravitonCharge++;
@@ -1752,6 +1883,7 @@ function updateDiamond(d) {
     }
   }
 
+  // movement: follow nearest enemy or orbit
   const roamSpeed = 1.6;
   let nearest = null, nd = Infinity;
   for (const e of enemies) {
@@ -1769,14 +1901,19 @@ function updateDiamond(d) {
     d.y = canvas.height/2 + Math.sin(d.angle) * radius;
   }
 
+  // Try to capture nearby enemies into attachments (unless they were recently detached)
   for (let i = enemies.length-1; i >= 0; i--) {
     const e = enemies[i];
     if (!e || e === d || e.attachedTo || e.type === "boss" || e.type === "mini-boss") continue;
+    // skip if enemy was recently detached and still in reattach cooldown
+    if (e.canReattach === false) continue;
+
     const dx = d.x - e.x, dy = d.y - e.y, dist = Math.hypot(dx,dy);
     if (dist < 260 && d.attachments.length < 15) {
       const pull = 0.04 + (1 - Math.min(dist/260,1)) * 0.06;
       e.x += dx * pull; e.y += dy * pull;
       if (dist < 28) {
+        // attach enemy to diamond
         enemies.splice(i,1);
         e.attachedTo = d;
         e.orbitAngle = Math.random()*Math.PI*2;
@@ -1789,6 +1926,7 @@ function updateDiamond(d) {
     }
   }
 
+  // Update attached enemy orbits and allow them to attack while attached
   for (let i = 0; i < d.attachments.length; i++) {
     const a = d.attachments[i];
     a.orbitAngle = (a.orbitAngle||0) + 0.06 + (a.type === "reflector" ? 0.02 : 0);
@@ -1979,30 +2117,72 @@ function updateMechs() {
 function updateEnemies() {
   if (player.invulnerable) { player.invulnerableTimer--; if (player.invulnerableTimer <= 0) player.invulnerable = false; }
 
+  // Update diamonds first (they handle attachments and releases)
   for (let di = diamonds.length-1; di >= 0; di--) {
     const d = diamonds[di];
     updateDiamond(d);
     if (d.health <= 0) {
       createExplosion(d.x, d.y, "white");
-      d.attachments.forEach(a => { a.attachedTo = null; enemies.push(a); });
+      // detach attachments back as enemies
+      d.attachments.forEach(a => {
+        a.attachedTo = null;
+        a.canReattach = true;
+        enemies.push(a);
+      });
       diamonds.splice(di,1);
       score += 200;
     }
   }
 
+  // Enemy update loop
   enemies = enemies.filter(e => {
     if (!e) return false;
     if (e.type === "boss") { updateBoss(e); return e.health > 0; }
     if (e.type === "mini-boss") { updateMiniBoss(e); return e.health > 0; }
     if (e.type === "mother-core") { updateMotherCore(e); return e.health > 0; }
 
+    // If enemy was launched (has vx/vy), apply momentum first, let it decay
+    if (e.vx !== undefined || e.vy !== undefined) {
+      e.x += (e.vx || 0);
+      e.y += (e.vy || 0);
+      // simple friction
+      e.vx *= 0.94;
+      e.vy *= 0.94;
+      // once momentum decays, remove vx/vy to resume standard AI
+      if (Math.abs(e.vx) + Math.abs(e.vy) < 0.2) {
+        delete e.vx; delete e.vy;
+        e.state = 'normal';
+      } else {
+        // while being propelled, skip AI seeking so they behave as launched projectiles
+        // but still check boundaries
+        const offscreenMargin = 1000;
+        if (e.x < -offscreenMargin || e.x > canvas.width + offscreenMargin || e.y < -offscreenMargin || e.y > canvas.height + offscreenMargin) {
+          // remove if far away
+          return false;
+        }
+        // continue to next enemy
+        // still allow tunnel collision detection below
+      }
+    }
+
     if (e.type === "triangle" || e.type === "red-square") {
       const dx = player.x - e.x, dy = player.y - e.y, dist = Math.hypot(dx,dy)||1;
-      e.x += (dx/dist)*e.speed; e.y += (dy/dist)*e.speed;
+      // only seek if not currently propelled (no vx/vy)
+      if (e.vx === undefined && e.vy === undefined) {
+        e.x += (dx/dist)*e.speed; e.y += (dy/dist)*e.speed;
+      }
+
       if (e.type === "triangle") {
         e.shootTimer = (e.shootTimer||0) + 1;
         if (e.shootTimer > 100) { e.shootTimer = 0; lightning.push({x: e.x, y: e.y, dx: (dx/dist)*5, dy: (dy/dist)*5, size:6, damage:15}); }
       }
+
+      // Check collisions with tunnels (prevent going into tunnel)
+      for (let ti = 0; ti < tunnels.length; ti++) {
+        const t = tunnels[ti];
+        if (t.active) handleTunnelCollisionForEntity(e, t);
+      }
+
       const distToPlayer = Math.hypot(e.x-player.x, e.y-player.y);
       if (distToPlayer < (e.size/2 + player.size/2)) {
         if (!player.invulnerable) player.health -= (e.type === "triangle" ? 25 : 15);
@@ -2026,6 +2206,12 @@ function updateEnemies() {
     }
 
     if (e.type === "reflector") {
+      // Check collisions with tunnels for reflectors too
+      for (let ti = 0; ti < tunnels.length; ti++) {
+        const t = tunnels[ti];
+        if (t.active) handleTunnelCollisionForEntity(e, t);
+      }
+
       let nearestAlly = null, minDist = Infinity;
       enemies.forEach(ally => {
         if (ally !== e && ally.type !== "reflector") {
@@ -2488,8 +2674,6 @@ function updateGoldStar() {
 
 // -------------------- Background drawing (Earth orbit for first 11 waves) --------------------
 
-let backgroundOffset = 0;
-
 function drawBackground(waveNum) {
   // Use Earth-orbit visual for first 11 waves (wave indices 0..10).
   if (waveNum >= 12 && waveNum <= 21) {
@@ -2593,230 +2777,4 @@ function drawBackground(waveNum) {
 function ensureCanvas() {
   canvas = document.getElementById("gameCanvas");
   if (!canvas) {
-    try {
-      canvas = document.createElement("canvas");
-      canvas.id = "gameCanvas";
-      document.body.appendChild(canvas);
-      canvas.style.position = "fixed";
-      canvas.style.left = "0";
-      canvas.style.top = "0";
-      canvas.style.zIndex = "999";
-    } catch (err) {
-      console.error("Failed to create canvas element:", err);
-      return false;
-    }
-  }
-  ctx = canvas.getContext("2d");
-  if (!ctx) {
-    console.error("Failed to get 2D context from canvas.");
-    return false;
-  }
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  return true;
-}
-
-window.addEventListener('load', init);
-
-function init() {
-  if (!ensureCanvas()) return;
-
-  // Basic input handling
-  window.addEventListener('keydown', e => {
-    keys[e.key.toLowerCase()] = true;
-    if (e.key === 'r' || e.key === 'R') {
-      if (gameOver) {
-        location.reload();
-      }
-    }
-  });
-  window.addEventListener('keyup', e => {
-    keys[e.key.toLowerCase()] = false;
-  });
-
-  window.addEventListener('resize', () => {
-    if (!ensureCanvas()) return;
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  });
-
-  player.x = canvas.width / 2;
-  player.y = canvas.height / 2;
-  goldStar.x = canvas.width / 4;
-  goldStar.y = canvas.height / 2;
-
-  loadHighScores();
-
-  wave = 0; waveTransition = false; waveTransitionTimer = 0;
-  startCutscene();
-}
-
-// -------------------- Enhanced Cinematic cutscene system --------------------
-
-// drawTextBox (enhanced) - replaces previous cinematic textbox
-function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal = 1) {
-  const joined = lines.join("\n");
-  const totalChars = joined.length;
-  const revealChars = Math.floor(totalChars * Math.max(0, Math.min(1, reveal)));
-
-  let remaining = revealChars;
-  const visibleLines = [];
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (remaining >= line.length) {
-      visibleLines.push(line);
-      remaining -= line.length;
-    } else if (remaining > 0) {
-      visibleLines.push(line.slice(0, remaining));
-      remaining = 0;
-    } else {
-      visibleLines.push("");
-    }
-  }
-
-  const showCursor = revealChars < totalChars && (Math.floor(Date.now() / 200) % 2 === 0);
-
-  ctx.save();
-  ctx.font = "18px 'Courier New', monospace";
-  const padding = 14;
-  const h = visibleLines.length * lineHeight + padding*2;
-  ctx.fillStyle = "rgba(5,10,15,0.88)";
-  ctx.fillRect(x, y - padding, maxW, h);
-  ctx.strokeStyle = "rgba(40,200,255,0.12)";
-  ctx.lineWidth = 2;
-  roundRect(ctx, x + 0.5, y - padding + 0.5, maxW - 1, h - 1, 8);
-  ctx.stroke();
-
-  ctx.fillStyle = "rgba(140,240,255,0.95)";
-  ctx.textAlign = align;
-  ctx.shadowColor = "rgba(0,200,255,0.25)";
-  ctx.shadowBlur = 8;
-
-  let drawX = x + 12;
-  if (align === "center") drawX = x + maxW / 2;
-  else if (align === "right") drawX = x + maxW - 12;
-
-  for (let i = 0; i < visibleLines.length; i++) {
-    const line = visibleLines[i];
-    ctx.fillText(line, drawX, y + (i+1)*lineHeight);
-  }
-
-  if (showCursor) {
-    let li = visibleLines.length - 1;
-    while (li >= 0 && visibleLines[li] === "") li--;
-    if (li >= 0) {
-      const textBefore = visibleLines[li];
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = "rgba(140,240,255,0.95)";
-      const metrics = ctx.measureText(textBefore);
-      let cursorX = drawX + metrics.width;
-      if (align === "center") cursorX = drawX - metrics.width/2 + metrics.width;
-      else if (align === "right") cursorX = drawX - metrics.width;
-      const cursorY = y + (li+1)*lineHeight - 14;
-      ctx.fillRect(cursorX + 2, cursorY, 8, 14);
-    } else {
-      const cursorX = x + 18;
-      const cursorY = y + lineHeight - 14;
-      ctx.fillRect(cursorX, cursorY, 8, 14);
-    }
-  }
-
-  ctx.restore();
-}
-
-// Cinematic scene drawing functions (enhanced versions)
-function drawLaunchBayScene(t, p) {
-  ctx.fillStyle = "#000814";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  for (let i = 0; i < 140; i++) {
-    const x = (i * 137) % canvas.width;
-    const y = (i * 241) % canvas.height;
-    const alpha = 0.25 + Math.abs(Math.sin((t||0) * 0.001 + i)) * 0.4;
-    ctx.fillStyle = `rgba(255,255,255,${0.12 * alpha})`;
-    ctx.fillRect(x, y, 2, 2);
-  }
-
-  const hangarX = canvas.width * 0.15, hangarW = canvas.width * 0.7;
-  const hangarY = canvas.height * 0.28, hangarH = canvas.height * 0.52;
-  const g = ctx.createLinearGradient(hangarX, hangarY, hangarX, hangarY+hangarH);
-  g.addColorStop(0, "#0f1721");
-  g.addColorStop(1, "#121827");
-  ctx.fillStyle = g;
-  ctx.fillRect(hangarX, hangarY, hangarW, hangarH);
-
-  ctx.strokeStyle = "#1e2b3a";
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 12; i++) {
-    const x = hangarX + (hangarW / 12) * i;
-    ctx.beginPath();
-    ctx.moveTo(x, hangarY);
-    ctx.lineTo(x, hangarY + hangarH);
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = "rgba(50,80,100,0.08)";
-  ctx.lineWidth = 1;
-  for (let j = 0; j < 10; j++) {
-    const gy = canvas.height * 0.6 + j * 20;
-    ctx.beginPath();
-    ctx.moveTo(hangarX, gy);
-    ctx.lineTo(hangarX + hangarW, gy);
-    ctx.stroke();
-  }
-
-  const squareSize = 60;
-  const squareX = canvas.width / 2 - squareSize / 2;
-  const squareY = canvas.height / 2 - squareSize / 2;
-
-  const leftAnchor = { x: hangarX + 40, y: squareY + squareSize / 2 - 6 };
-  const rightAnchor = { x: hangarX + hangarW - 40, y: squareY + squareSize / 2 - 6 };
-  const disconnectProgress = Math.max(0, Math.min(1, p * 1.6));
-  const hoseFade = 1 - disconnectProgress;
-  const hoseRetract = disconnectProgress * 60;
-
-  function drawHose(from, to, seed) {
-    ctx.save();
-    ctx.lineWidth = 8;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = `rgba(40,200,120,${0.95 * hoseFade})`;
-    ctx.beginPath();
-    const ctrlX = (from.x + to.x) / 2 + Math.sin((t||0)*0.002 + seed) * 30 * (1 - disconnectProgress);
-    const ctrlY = (from.y + to.y) / 2 + Math.cos((t||0)*0.002 + seed) * 10 * (1 - disconnectProgress);
-    const targetX = to.x + (from.x - to.x) * (hoseRetract / 120);
-    const targetY = to.y + (from.y - to.y) * (hoseRetract / 120);
-    ctx.moveTo(from.x, from.y);
-    ctx.quadraticCurveTo(ctrlX, ctrlY, targetX, targetY);
-    ctx.stroke();
-
-    const clampProgress = Math.min(1, disconnectProgress * 1.6);
-    ctx.fillStyle = `rgba(80,240,180,${0.9 * hoseFade})`;
-    const clampX = targetX + (Math.random() - 0.5) * 2;
-    const clampY = targetY - clampProgress * 40;
-    ctx.beginPath();
-    ctx.arc(clampX, clampY, 6 * (1 - clampProgress * 0.8), 0, Math.PI*2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  drawHose({ x: squareX + 8, y: squareY + squareSize/2 }, leftAnchor, 1);
-  drawHose({ x: squareX + squareSize - 8, y: squareY + squareSize/2 }, rightAnchor, 2);
-
-  if (disconnectProgress > 0.6) {
-    for (let i = 0; i < 6; i++) {
-      const bx = squareX + (Math.random() - 0.5) * squareSize * 1.2;
-      const by = squareY + (Math.random() - 0.5) * squareSize * 1.2;
-      ctx.fillStyle = `rgba(160,255,200,${Math.random() * 0.6})`;
-      ctx.fillRect(bx, by, 3, 3);
-    }
-  }
-
-  ctx.shadowBlur = 30 * (1 - disconnectProgress * 0.6);
-  ctx.shadowColor = "lime";
-  ctx.fillStyle = "lime";
-  ctx.fillRect(squareX, squareY, squareSize, squareSize);
-  ctx.shadowBlur = 0;
-
-  const eyeAppear = Math.max(0, Math.min(1, disconnectProgress * 1.4));
-  if (eyeAppear > 0.02) {
-    const innerPad = 8
+   
