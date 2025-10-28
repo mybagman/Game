@@ -1490,8 +1490,26 @@ function drawBackground(waveNum) {
 }
 
 function spawnTunnel() {
-  const h = canvas.height/3, w = 600;
-  tunnels.push({x: canvas.width, y: 0, width: w, height: h, speed: 2, active: true, damageCooldown: 0}, {x: canvas.width, y: canvas.height-h, width: w, height: h, speed: 2, active: true, damageCooldown: 0});
+  const h = Math.floor(canvas.height / 3);
+  const w = 600;
+  // spawn top and bottom tunnels that move left across the screen
+  tunnels.push({
+    x: canvas.width + 20,
+    y: 0,
+    width: w,
+    height: h,
+    speed: 2,
+    active: true,
+    damageCooldown: 0
+  }, {
+    x: canvas.width + 20,
+    y: canvas.height - h,
+    width: w,
+    height: h,
+    speed: 2,
+    active: true,
+    damageCooldown: 0
+  });
 }
 
 function createExplosion(x,y,color="red"){ 
@@ -1543,7 +1561,7 @@ function updateTunnels() {
     const t = tunnels[i]; 
     if (!t.active) continue; 
     t.x -= t.speed; 
-    if (t.x+t.width < 0) tunnels.splice(i,1);
+    if (t.x+t.width < -50) tunnels.splice(i,1);
 
     // player collision: if player intersects tunnel, damage player periodically
     if (t.damageCooldown > 0) t.damageCooldown--;
@@ -2038,6 +2056,7 @@ function updateDiamond(d) {
   }
 }
 
+// Ensure canvas exists and context is available
 function ensureCanvas() {
   canvas = document.getElementById("gameCanvas");
   if (!canvas) {
@@ -2681,4 +2700,69 @@ function makeCutsceneScenes() {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
       if (p > 0.4) {
-        const countdown = Math.ceil
+        const countdown = Math.ceil((1 - Math.max(0, Math.min(1, p))) * 3);
+        ctx.save();
+        ctx.fillStyle = "rgba(220,240,255,0.95)";
+        ctx.font = "64px 'Orbitron', Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(countdown.toString(), canvas.width / 2, canvas.height / 2);
+        ctx.restore();
+      }
+    }
+  });
+
+  // Return the constructed scenes
+  return scenes;
+}
+
+// Minimal startCutscene implementation (plays scenes sequentially then starts the game)
+function startCutscene() {
+  const scenes = makeCutsceneScenes();
+  if (!scenes || scenes.length === 0) {
+    // Nothing to play — proceed to spawn wave and start game
+    cinematic.playing = false;
+    spawnWave(wave);
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
+  cinematic.playing = true;
+  let sceneIndex = 0;
+  let sceneStart = performance.now();
+
+  function frame(now) {
+    if (!cinematic.playing) return;
+
+    const scene = scenes[sceneIndex];
+    const elapsed = now - sceneStart;
+    const p = Math.max(0, Math.min(1, elapsed / scene.duration));
+
+    if (!ensureCanvas()) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    try {
+      scene.draw(now, p);
+    } catch (err) {
+      console.warn("Cutscene draw error:", err);
+      cinematic.playing = false;
+      spawnWave(wave);
+      requestAnimationFrame(gameLoop);
+      return;
+    }
+
+    if (elapsed >= scene.duration) {
+      sceneIndex++;
+      sceneStart = now;
+      if (sceneIndex >= scenes.length) {
+        cinematic.playing = false;
+        spawnWave(wave);
+        requestAnimationFrame(gameLoop);
+        return;
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+}
+
+// ========== End of file ==========
