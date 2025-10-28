@@ -2777,4 +2777,138 @@ function drawBackground(waveNum) {
 function ensureCanvas() {
   canvas = document.getElementById("gameCanvas");
   if (!canvas) {
-   
+    return false;
+  }
+  ctx = canvas.getContext("2d");
+  if (!ctx) return false;
+
+  // Make sure canvas matches window size
+  if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  // Initialize player/goldStar positions if not set
+  if (!player.x || !player.y) {
+    player.x = canvas.width / 2;
+    player.y = canvas.height / 2;
+  }
+  if (!goldStar.x || !goldStar.y) {
+    respawnGoldStar();
+  }
+
+  return true;
+}
+
+// Basic high-score save helper (simple in-memory + localStorage)
+function saveHighScoresOnGameOver() {
+  if (recordedScoreThisRun) return;
+  highScore = Math.max(highScore, score);
+  highScores.push({ name: cinematic.playerName || "Player", score });
+  try {
+    localStorage.setItem("mybagman_highscores", JSON.stringify(highScores));
+    localStorage.setItem("mybagman_best", String(highScore));
+  } catch (e) {}
+  recordedScoreThisRun = true;
+}
+
+function loadHighScores() {
+  try {
+    const raw = localStorage.getItem("mybagman_highscores");
+    const best = localStorage.getItem("mybagman_best");
+    if (raw) highScores = JSON.parse(raw);
+    if (best) highScore = Number(best) || highScore;
+  } catch (e) {}
+}
+
+// Reset the game to initial state and start from wave 0
+function resetGame() {
+  // clear arrays
+  cloudParticles = [];
+  bullets = [];
+  enemies = [];
+  diamonds = [];
+  tunnels = [];
+  tanks = [];
+  walkers = [];
+  mechs = [];
+  debris = [];
+  explosions = [];
+  lightning = [];
+  powerUps = [];
+  reflectionEffects = [];
+  redPunchEffects = [];
+  minionsToAdd = [];
+
+  // reset state
+  score = 0;
+  wave = 0;
+  waveTransition = false;
+  waveTransitionTimer = 0;
+  gameOver = false;
+  recordedScoreThisRun = false;
+
+  player = {
+    x: canvas.width/2,
+    y: canvas.height/2,
+    size: 28,
+    speed: 4,
+    health: 100,
+    maxHealth: 100,
+    lives: 3,
+    invulnerable: false,
+    invulnerableTimer: 0,
+    reflectAvailable: false,
+    fireRateBoost: 1,
+    healAccumulator: 0
+  };
+
+  respawnGoldStar();
+  spawnWave(0);
+  requestAnimationFrame(gameLoop);
+}
+
+// Input handlers
+window.addEventListener("keydown", (e) => {
+  const key = e.key.toLowerCase();
+  if (key === "r") {
+    // restart
+    if (gameOver) {
+      resetGame();
+    }
+  }
+  // arrows map to arrow* keys
+  if (e.key === "ArrowUp") keys["arrowup"] = true;
+  if (e.key === "ArrowDown") keys["arrowdown"] = true;
+  if (e.key === "ArrowLeft") keys["arrowleft"] = true;
+  if (e.key === "ArrowRight") keys["arrowright"] = true;
+
+  keys[key] = true;
+});
+
+window.addEventListener("keyup", (e) => {
+  const key = e.key.toLowerCase();
+  if (e.key === "ArrowUp") keys["arrowup"] = false;
+  if (e.key === "ArrowDown") keys["arrowdown"] = false;
+  if (e.key === "ArrowLeft") keys["arrowleft"] = false;
+  if (e.key === "ArrowRight") keys["arrowright"] = false;
+
+  keys[key] = false;
+});
+
+// Resize handling
+window.addEventListener("resize", () => {
+  if (!canvas) return;
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+
+// Basic initialization
+window.addEventListener("load", () => {
+  loadHighScores();
+  ensureCanvas();
+  respawnPlayer();
+  respawnGoldStar();
+  spawnWave(0);
+  requestAnimationFrame(gameLoop);
+});
