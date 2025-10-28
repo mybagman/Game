@@ -2836,7 +2836,7 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
       const sx = centerX + Math.cos(a) * r;
       const sy = centerY + Math.sin(a) * r;
       ctx.fillStyle = `rgba(255,${120 + Math.floor(Math.random()*80)},${80 + Math.floor(Math.random()*80)},${0.25 + 0.75 * intensity})`;
-      ctx.fillRect(sx + (Math.random()-0.5)*30*intensity, sy + (Math.random()-0.5)*30*intensity, 3 + Math.random()*4, 3 + Math.random()*4);
+      ctx.fillRect(sx + (Math.random()-0.5)*30*intensity, sy + (Math.random()-0.5)*30*intensity, 3, 3);
     }
   }
 
@@ -2923,7 +2923,8 @@ function startCutscene() {
   // Start the cinematic
   cinematic.playing = true;
   cinematic.sceneIndex = 0;
-  cinematic.sceneStart = Date.now();
+  // Use performance.now() so it matches the requestAnimationFrame timestamp that is passed into gameLoop
+  cinematic.sceneStart = performance.now();
 
   // Ensure the first scene is ready (no game entities spawned during cutscene)
   bullets = [];
@@ -2947,7 +2948,8 @@ function startCutscene() {
 // Helper to advance cinematic
 function advanceCinematic() {
   cinematic.sceneIndex++;
-  cinematic.sceneStart = Date.now();
+  // Use performance.now() for consistent timestamp origin with RAF timestamps
+  cinematic.sceneStart = performance.now();
   if (cinematic.sceneIndex >= cinematic.sceneDurations.length) {
     // End cinematic and start the first wave / gameplay
     cinematic.playing = false;
