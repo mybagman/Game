@@ -2812,4 +2812,105 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
       const size = 28 + Math.sin((t||0)*0.002 + i)*4;
       ctx.fillStyle = "rgba(100,200,255,0.9)";
       ctx.beginPath();
-     
+      ctx.moveTo(ex, ey - size/2);
+      ctx.lineTo(ex - size/2, ey + size/2);
+      ctx.lineTo(ex + size/2, ey + size/2);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.fillStyle = "rgba(255,160,160,0.65)";
+      ctx.fillRect(ex - 6, ey - 6, 12, 12);
+    }
+  }
+
+  // Add some erupting particles near the core when p is high
+  if (p > 0.6) {
+    const intensity = (p - 0.6) / 0.4;
+    for (let i = 0; i < 30 * intensity; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 40 + Math.random() * 80 * intensity;
+      const sx = centerX + Math.cos(a) * r;
+      const sy = centerY + Math.sin(a) * r;
+      ctx.fillStyle = `rgba(255,${120 + Math.floor(Math.random()*80)},${80 + Math.floor(Math.random()*80)},${0.25 + 0.75 * intensity})`;
+      ctx.fillRect(sx + (Math.random()-0.5)*30*intensity, sy + (Math.random()-0.5)*30*intensity, 3 + Math.random()*4, 3 + Math.random()*4);
+    }
+  }
+
+  // Final conveyance text with reveal
+  if (p > 0.2) {
+    const reveal = Math.max(0, Math.min(1, (p - 0.2) / 0.8));
+    drawTextBox([
+      'Lead Pilot: "We must reach the Mother Diamond."',
+      'AI: "Proceed with extreme caution."'
+    ], 60, canvas.height - 160, canvas.width - 120, 26, "left", reveal);
+  }
+}
+
+// ----------------------
+// Collision & simple enemy updates for basic enemy types
+// ----------------------
+function updateSimpleEnemies() {
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    if (!e) continue;
+
+    if (e.type === "red-square") {
+      const dx = player.x - e.x, dy = player.y - e.y;
+      const mag = Math.hypot(dx, dy) || 1;
+      e.x += (dx / mag) * e.speed;
+      e.y += (dy / mag) * e.speed;
+    } else if (e.type === "triangle") {
+      const dx = player.x - e.x, dy = player.y - e.y;
+      const mag = Math.hypot(dx, dy) || 1;
+      e.x += (dx / mag) * e.speed * 0.9;
+      e.y += (dy / mag) * e.speed * 0.9;
+      e.shootTimer = (e.shootTimer || 0) + 1;
+      if (e.shootTimer > 120) {
+        e.shootTimer = 0;
+        const dxp = player.x - e.x, dyp = player.y - e.y, mag2 = Math.hypot(dxp,dyp)||1;
+        lightning.push({x: e.x, y: e.y, dx: (dxp/mag2)*5, dy: (dyp/mag2)*5, size: 6, damage: 10});
+      }
+    } else if (e.type === "reflector") {
+      e.angle = (e.angle || 0) + 0.02;
+    } else if (e.type === "boss") {
+      updateBoss(e);
+    } else if (e.type === "mini-boss") {
+      updateMiniBoss(e);
+    } else if (e.type === "mother-core") {
+      updateMotherCore(e);
+    }
+  }
+}
+
+// ----------------------
+// Reset and respawn helpers
+// ----------------------
+function resetAuraOnDeath() {
+  goldStarAura.level = 0;
+  goldStarAura.radius = goldStarAura.baseRadius;
+  auraSparks = [];
+  auraShockwaves = [];
+}
+
+function respawnGoldStar() {
+  goldStar.alive = true;
+  goldStar.health = goldStar.maxHealth;
+  goldStar.x = Math.random() * (canvas.width - 200) + 100;
+  goldStar.y = Math.random() * (canvas.height - 200) + 100;
+  goldStar.respawnTimer = 0;
+  goldStar.collecting = false;
+  goldStar.collectTimer = 0;
+  goldStar.targetPowerUp = null;
+  resetAuraOnDeath();
+}
+
+// ----------------------
+// Cinematic runner
+// ----------------------
+function startCutscene() {
+  // Define scene durations (ms). Keep the cinematic content unchanged.
+  cinematic.sceneDurations = [
+    5000, // Launch bay
+    5000, // Enemy overview
+    6000, // Diamond destruction / charging
+    6000  // Mother diamond + enemies
