@@ -854,6 +854,56 @@ function drawPowerUps() {
   });
 }
 
+// ----------
+// Player drawing (added) - fixes "game runs but no player"
+// ----------
+function drawPlayer() {
+  // Draw the player ship so it's visible on screen.
+  // Keep visuals lightweight and consistent with other UI elements.
+  if (!player) return;
+  ctx.save();
+  ctx.translate(player.x, player.y);
+
+  // Basic body
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = player.reflectAvailable ? "cyan" : "rgba(0,0,0,0)";
+  ctx.fillStyle = "rgba(80,200,255,0.95)";
+  ctx.beginPath();
+  ctx.arc(0, 0, player.size / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // outline
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Firing indicator (rotates slightly when fired)
+  ctx.save();
+  ctx.rotate(firingIndicatorAngle);
+  ctx.fillStyle = "rgba(255,220,120,0.95)";
+  ctx.beginPath();
+  ctx.moveTo(player.size / 2 + 4, 0);
+  ctx.lineTo(player.size / 2 - 6, -6);
+  ctx.lineTo(player.size / 2 - 6, 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Reflect ready indicator
+  if (player.reflectAvailable) {
+    ctx.strokeStyle = "rgba(0,220,255,0.9)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, player.size / 2 + 8, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// ----------------------
+
 function drawGoldStar() {
   if (!goldStar.alive) return;
   if (goldStar.collecting) {
