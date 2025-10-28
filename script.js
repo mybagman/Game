@@ -1,8 +1,3 @@
-// Cleaned and reorganized script.js
-// - Fixed syntax errors (removed corrupted duplicates, restored truncated blocks).
-// - Reordered so globals, utilities, spawn/update/draw, init/cutscene, and main loop appear in a logical order.
-// - No gameplay logic changes beyond repairing corrupted lines so the script runs.
-
 "use strict";
 
 let canvas, ctx;
@@ -312,7 +307,7 @@ const waves = [
   // Wave 19: Full Assault
   { theme: "full-assault", enemies: [{ type: "tank", count: 6 }, { type: "walker", count: 6 }, { type: "mech", count: 3 }, { type: "mini-boss", count: 2 }] },
   // Wave 20: The Last Stand
-  { theme: "last-stand", enemies: [{ type: "red-square", count: 15 }, { type: "triangle", count: 15 }, { type: "tank", count: 5 }, { type: "walker", count: 5 }, { type: "mech", count: 4 }, { type: "bo[...]
+  { theme: "last-stand", enemies: [{ type: "red-square", count: 15 }, { type: "triangle", count: 15 }, { type: "tank", count: 5 }, { type: "walker", count: 5 }, { type: "mech", count: 4 }, { type: "mini-boss", count: 2 }] },
   // Wave 21: MOTHER CORE
   { theme: "mother-core", enemies: [{ type: "mother-core", count: 1 }, { type: "triangle", count: 8 }, { type: "reflector", count: 4 }] }
 ];
@@ -2373,6 +2368,21 @@ function init() {
 
   wave = 0; waveTransition = false; waveTransitionTimer = 0;
   startCutscene();
+
+  // Input handlers
+  window.addEventListener('keydown', (e) => {
+    if (!e || !e.key) return;
+    keys[e.key.toLowerCase()] = true;
+    // prevent arrow key scrolling
+    if (["arrowup","arrowdown","arrowleft","arrowright"].includes(e.key.toLowerCase())) e.preventDefault();
+  });
+  window.addEventListener('keyup', (e) => {
+    if (!e || !e.key) return;
+    keys[e.key.toLowerCase()] = false;
+  });
+
+  // Start main loop
+  requestAnimationFrame(gameLoop);
 }
 
 // ----------------------
@@ -2380,7 +2390,10 @@ function init() {
 // ----------------------
 let cinematic = {
   playing: false,
-  playerName: "Pilot"
+  playerName: "Pilot",
+  sceneIndex: 0,
+  sceneStart: 0,
+  sceneDurations: []
 };
 
 function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal = 1) {
@@ -2821,87 +2834,4 @@ function drawMotherDiamondAndEnemiesScene(t, p) {
     `Commander: "${cinematic.playerName || "Pilot"}, you must reach the`,
     'Mother Diamond and destroy it.',
     'Then we can take back Earth."'
-  ], 50, canvas.height - 170, canvas.width - 100, 26, "left", reveal);
-}
-
-function drawGoldStarLaunch(t, p) {
-  ctx.fillStyle = "#000814";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  for (let i = 0; i < 100; i++) {
-    const x = ((i * 137) % canvas.width) - p * canvas.width * 0.5;
-    const y = (i * 241) % canvas.height;
-    const speed = 1 + (i % 3);
-    ctx.fillStyle = `rgba(255,255,255,${0.6 - p * 0.4})`;
-    ctx.fillRect(x - speed * p * 200, y, 2 + speed * p * 3, 2);
-  }
-
-  const startX = canvas.width * 0.3;
-  const startY = canvas.height * 0.5;
-  const endX = canvas.width * 0.5;
-  const endY = canvas.height * 0.5;
-
-  const gsX = startX + (endX - startX) * p;
-  const gsY = startY + (endY - startY) * p;
-  const gsSize = 40 + p * 60;
-
-  const greenStartX = startX - 90;
-  const greenEndX = endX - 60;
-  const greenX = greenStartX + (greenEndX - greenStartX) * Math.max(0, Math.min(1, (p + 0.05)));
-  const greenY = startY - (p * 80);
-  const greenSize = 36 + p * 36;
-
-  if (p > 0.4) {
-    const blastIntensity = Math.min(1, (p - 0.4) / 0.3);
-
-    for (let i = 0; i < 20; i++) {
-      const trailP = i / 20;
-      const tx = gsX - (30 + i * 15) * blastIntensity;
-      const ty = gsY + (Math.random() - 0.5) * 20 * blastIntensity;
-      const tSize = (20 - i) * blastIntensity;
-
-      ctx.fillStyle = `rgba(255,${150 - i * 7},0,${(1 - trailP) * 0.8})`;
-      ctx.beginPath();
-      ctx.arc(tx, ty, tSize, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.shadowBlur = 40;
-    ctx.shadowColor = "orange";
-    ctx.fillStyle = `rgba(255,200,0,${blastIntensity})`;
-    ctx.beginPath();
-    ctx.arc(gsX - 25, gsY, 15 * blastIntensity, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    ctx.save();
-    // Fixed truncated assignment: set composite mode and finish drawing, then restore and close function.
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = `rgba(255,200,0,${blastIntensity * 0.5})`;
-    ctx.beginPath();
-    ctx.arc(gsX, gsY, 60 * blastIntensity, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.restore();
-  }
-
-  // small gold star draw (static)
-  ctx.save();
-  ctx.translate(gsX, gsY);
-  ctx.fillStyle = "gold";
-  ctx.beginPath();
-  for (let i = 0; i < 5; i++) {
-    const angle = (i*4*Math.PI)/5 - Math.PI/2;
-    const radius = i%2===0 ? gsSize/2 : gsSize/4;
-    const x = Math.cos(angle)*radius, y = Math.sin(angle)*radius;
-    if (i === 0) ctx.moveTo(x,y);
-    else ctx.lineTo(x,y);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-
-  // Reveal dialog when nearing full p
-  if (p > 0.6) {
-    const reveal = Math.max(0, Math.min(1, (p - 0.6) / 0.4));
-    drawText
+  ], 50, canvas
