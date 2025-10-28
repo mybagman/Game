@@ -2963,3 +2963,23 @@ function drawTextBox(lines, x, y, maxW, lineHeight = 26, align = "left", reveal 
 
   ctx.restore();
 }
+
+// --- Initialization: start the game on page load ---
+function initGame() {
+  // ensure canvas exists and sizes are set
+  ensureCanvas();
+
+  // load persisted highscores if present
+  try { loadHighScores(); } catch (e) { /* ignore */ }
+
+  // start/reset the game
+  resetGame();
+}
+
+// If DOM already ready start immediately, otherwise wait for DOMContentLoaded
+if (document.readyState === "complete" || document.readyState === "interactive") {
+  // ensure this runs after current script execution
+  setTimeout(initGame, 0);
+} else {
+  window.addEventListener("DOMContentLoaded", initGame);
+}
